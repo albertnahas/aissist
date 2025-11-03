@@ -1,78 +1,73 @@
 # semantic-recall Specification
 
 ## Purpose
-TBD - created by archiving change add-aissist-mvp. Update Purpose after archive.
+Provides semantic memory recall using Claude Code with file analysis tools. Enables users to search their memories with natural language queries and receive AI-synthesized answers that understand related concepts and context.
+
 ## Requirements
-### Requirement: Text-Based Search
-The system SHALL search all Markdown files for text matching the user's query.
+### Requirement: Semantic File Analysis
+The system SHALL use Claude Code with file analysis tools to perform semantic search instead of keyword-based search.
 
-#### Scenario: Search all files
-- **WHEN** the user runs `aissist recall "motivation tips"`
-- **THEN** the system searches all .md files in the storage directory and its subdirectories
+#### Scenario: Use Claude Code headless mode
+- **WHEN** the user runs `aissist recall "what did I learn about React?"`
+- **THEN** the system checks Claude Code availability, invokes it with Grep/Read/Glob tools, and Claude semantically analyzes memory files
 
-#### Scenario: Find matching excerpts
-- **WHEN** matching text is found
-- **THEN** the system extracts relevant excerpts with surrounding context
+#### Scenario: Semantic understanding
+- **WHEN** the user searches for "productivity tips"
+- **THEN** Claude Code finds related content using terms like "efficiency", "time management", "focus", etc., not just exact keyword matches
 
-#### Scenario: No matches found
-- **WHEN** no matching text is found
-- **THEN** the system displays a message indicating no results were found
+#### Scenario: Incremental file reading
+- **WHEN** Claude Code analyzes memory files
+- **THEN** it uses Grep to find potentially relevant files, reads only relevant ones, and analyzes content progressively without loading all files into memory
 
-### Requirement: AI-Powered Summarization
-The system SHALL use Claude AI to summarize and answer questions based on matching excerpts. (See **claude-integration** spec for authentication details.)
+#### Scenario: Tool-restricted execution
+- **WHEN** Claude Code runs in headless mode for recall
+- **THEN** it only has access to Grep, Read, and Glob tools (no write, edit, bash, or file modification tools)
 
-#### Scenario: Summarize search results
-- **WHEN** the user runs `aissist recall "what did I say about productivity?"`
-- **THEN** the system:
-  1. Searches for matching text
-  2. Sends matching excerpts to Claude via the Agent SDK
-  3. Returns Claude's summarized answer
+### Requirement: Fallback to Keyword Search
+The system SHALL gracefully fall back to keyword search when Claude Code is unavailable.
 
-#### Scenario: Contextual understanding
-- **WHEN** Claude receives multiple excerpts
-- **THEN** it synthesizes information across all excerpts to provide a comprehensive answer
+#### Scenario: Claude Code not installed
+- **WHEN** Claude Code is not installed or not in PATH
+- **THEN** the system displays "Claude Code not found, using keyword search", performs keyword-based search, displays raw excerpts, and includes install instructions
 
-#### Scenario: Handle API errors
-- **WHEN** the Claude API is unavailable or returns an error
-- **THEN** the system displays an error message and shows the raw matching excerpts as fallback
+#### Scenario: Claude Code not authenticated
+- **WHEN** Claude Code is installed but user is not authenticated
+- **THEN** the system displays "Please run 'claude login'", falls back to keyword search, and shows raw results
 
-### Requirement: Excerpt Context Preservation
-The system SHALL preserve sufficient context around matching text for AI understanding.
+#### Scenario: Claude Code execution fails
+- **WHEN** Claude Code encounters an error during execution
+- **THEN** the system logs error details, falls back to keyword search, and shows raw results with error message
 
-#### Scenario: Include surrounding lines
-- **WHEN** a text match is found
-- **THEN** the system includes several lines before and after the match for context
+### Requirement: Performance and Scalability
+The system SHALL handle large memory collections without timeout issues.
 
-#### Scenario: Include metadata
-- **WHEN** excerpts are sent to Claude
-- **THEN** the system includes:
-  - File path
-  - Date (from filename)
-  - Entry type (goal, history, context, reflection)
+#### Scenario: Large memory sets
+- **WHEN** the user has hundreds of memory files
+- **THEN** Claude Code selectively reads relevant files, streams responses progressively, and completes without 30-second timeouts
 
-### Requirement: Search Performance
-The system SHALL perform searches efficiently even with large amounts of stored data.
+#### Scenario: Progressive feedback
+- **WHEN** Claude Code is analyzing files
+- **THEN** the system displays a spinner with status updates (e.g., "Searching your memories...")
 
-#### Scenario: Search optimization
-- **WHEN** the system performs a search
-- **THEN** it uses efficient file reading methods and avoids loading entire files into memory unnecessarily
+### Requirement: Claude Code Session Detection
+The system SHALL detect Claude Code availability and authentication status.
 
-#### Scenario: Progressive loading
-- **WHEN** searching through many files
-- **THEN** the system provides feedback on search progress
+#### Scenario: Check installation
+- **WHEN** the recall command is invoked
+- **THEN** the system checks if `claude` CLI is available in PATH
 
-### Requirement: Query Flexibility
-The system SHALL support various query formats and natural language questions.
+#### Scenario: Report status
+- **WHEN** Claude Code is unavailable
+- **THEN** the system displays a helpful message explaining how to install and authenticate
 
-#### Scenario: Keyword search
-- **WHEN** the user provides simple keywords
-- **THEN** the system finds exact and partial matches
+### Requirement: Tool-Enabled Prompt Construction
+The system SHALL construct prompts that guide Claude Code to use file analysis tools effectively.
 
-#### Scenario: Natural language question
-- **WHEN** the user asks a question like "what did I learn about React?"
-- **THEN** the system searches for relevant terms and uses Claude to understand the question intent
+#### Scenario: Provide storage context
+- **WHEN** invoking Claude Code
+- **THEN** the prompt includes storage path, directory structure explanation, user's query, and instructions to use Grep/Read/Glob tools
 
-#### Scenario: Phrase search
-- **WHEN** the user provides a quoted phrase
-- **THEN** the system searches for the exact phrase
+#### Scenario: Encourage semantic analysis
+- **WHEN** Claude Code receives the prompt
+- **THEN** it's instructed to use semantic understanding, search for related concepts, read contextually relevant files, and synthesize information
 

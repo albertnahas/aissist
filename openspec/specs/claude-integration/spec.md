@@ -1,100 +1,91 @@
 # claude-integration Specification
 
 ## Purpose
-TBD - created by archiving change add-aissist-mvp. Update Purpose after archive.
+Provides integration with Claude Code CLI using headless mode with file analysis tools for semantic memory recall. Replaced Agent SDK approach with tool-enabled subprocess execution for better performance and semantic understanding.
+
 ## Requirements
-### Requirement: Agent SDK Setup
-The system SHALL use the @anthropic-ai/agent-sdk for all Claude AI interactions.
+### Requirement: Claude Code Headless Execution
+The system SHALL use Claude Code CLI in headless mode with restricted file analysis tools.
 
-#### Scenario: Initialize SDK
-- **WHEN** the system needs to use Claude for semantic recall
-- **THEN** it initializes the Agent SDK with appropriate configuration
+#### Scenario: Execute with file tools
+- **WHEN** the system invokes Claude Code for recall
+- **THEN** it executes: `claude -p "<prompt>" --allowedTools 'Grep,Read,Glob'`
 
-#### Scenario: Handle missing SDK
-- **WHEN** the @anthropic-ai/agent-sdk package is not installed
-- **THEN** the system displays a clear error message instructing the user to install dependencies
+#### Scenario: Tool restriction for security
+- **WHEN** invoking Claude Code
+- **THEN** the allowed tools are strictly limited to Grep, Read, and Glob (read-only)
 
-### Requirement: API Authentication
-The system SHALL authenticate with Claude using the ANTHROPIC_API_KEY environment variable.
+#### Scenario: Streaming response
+- **WHEN** Claude Code processes the recall request
+- **THEN** the system receives stdout progressively and displays results
 
-#### Scenario: Valid API key
-- **WHEN** the user has set ANTHROPIC_API_KEY in their environment
-- **THEN** the system authenticates successfully with Claude
+### Requirement: Session Management
+The system SHALL detect and verify Claude Code availability and authentication.
 
-#### Scenario: Missing API key
-- **WHEN** the ANTHROPIC_API_KEY environment variable is not set
-- **THEN** the system displays a helpful error message with instructions on obtaining and setting an API key
+#### Scenario: Check Claude Code installation
+- **WHEN** the system starts a recall operation
+- **THEN** it checks if `claude` CLI exists in PATH
 
-#### Scenario: Invalid API key
-- **WHEN** the provided API key is invalid or expired
-- **THEN** the system displays an error message indicating authentication failed
+#### Scenario: Handle authentication failure
+- **WHEN** Claude Code returns authentication error
+- **THEN** the system displays: "Please run: claude login"
 
-### Requirement: Claude Reasoning
-The system SHALL use Claude to summarize and answer questions based on user's stored memories.
+#### Scenario: Graceful degradation
+- **WHEN** Claude Code is not available
+- **THEN** the system falls back to keyword search
 
-#### Scenario: Send context to Claude
-- **WHEN** the system invokes Claude for semantic recall
-- **THEN** it sends:
-  - The user's query
-  - Relevant excerpts from matched Markdown files
-  - Structured metadata about each excerpt
+### Requirement: Prompt Engineering for File Analysis
+The system SHALL construct prompts that optimize Claude Code's file analysis capabilities.
 
-#### Scenario: Receive Claude response
-- **WHEN** Claude processes the request
-- **THEN** the system receives and displays the summarized answer
+#### Scenario: Context-rich prompts
+- **WHEN** building a recall prompt
+- **THEN** the system includes storage path, directory structure, and user query
 
-#### Scenario: Handle response errors
-- **WHEN** Claude returns an error or unexpected response
-- **THEN** the system displays a meaningful error message to the user
+#### Scenario: Tool usage guidance
+- **WHEN** Claude Code receives the prompt
+- **THEN** it's instructed to use Grep for discovery, Read for analysis, and think semantically
 
-### Requirement: Prompt Engineering
-The system SHALL construct effective prompts for Claude to ensure high-quality responses.
+### Requirement: Tool-Based File Discovery
+The system SHALL enable Claude Code to discover and analyze files using tools rather than pre-selected excerpts.
 
-#### Scenario: Structure recall prompt
-- **WHEN** building a prompt for semantic recall
-- **THEN** the system includes:
-  - Clear instructions for Claude
-  - The user's original question
-  - All relevant excerpts with metadata
-  - Guidance on synthesizing information
+#### Scenario: Grep-first discovery
+- **WHEN** Claude Code starts analyzing
+- **THEN** it uses Grep to search for relevant terms and identifies candidate files
 
-#### Scenario: Optimize for context
-- **WHEN** multiple excerpts are found
-- **THEN** the system organizes them logically (by date, by context type, etc.)
+#### Scenario: Semantic file selection
+- **WHEN** deciding which files to read
+- **THEN** Claude Code considers file paths, uses Grep results to gauge relevance, and reads contextually related files
 
-### Requirement: API Usage Optimization
-The system SHALL minimize API costs by optimizing requests to Claude.
+### Requirement: Security Constraints
+The system SHALL enforce strict security constraints on Claude Code's capabilities.
 
-#### Scenario: Filter excerpts before sending
-- **WHEN** many text matches are found
-- **THEN** the system selects the most relevant excerpts to send to Claude (e.g., top 10)
+#### Scenario: Read-only access
+- **WHEN** Claude Code is invoked for recall
+- **THEN** it can only use Grep, Read, and Glob tools (no Write, Edit, Delete, or Bash)
 
-#### Scenario: Cache configuration
-- **WHEN** making API requests
-- **THEN** the system leverages any available caching mechanisms from the Agent SDK
+#### Scenario: Path restriction
+- **WHEN** constructing the prompt
+- **THEN** the system specifies the storage directory and Claude Code should only access files within that directory
 
-### Requirement: Offline Graceful Degradation
-The system SHALL handle offline or unavailable API scenarios gracefully.
+### Requirement: Error Handling and Fallback
+The system SHALL handle Claude Code errors gracefully with appropriate fallbacks.
 
-#### Scenario: Network unavailable
-- **WHEN** the system cannot reach the Claude API due to network issues
-- **THEN** it displays the raw search results without AI summarization
+#### Scenario: Claude Code not found
+- **WHEN** `claude` CLI is not in PATH
+- **THEN** the system logs warning, falls back to keyword search, and displays install instructions
 
-#### Scenario: API quota exceeded
-- **WHEN** the user has exceeded their API quota
-- **THEN** the system displays a clear message about quota limits and shows raw search results as fallback
+#### Scenario: Subprocess error
+- **WHEN** the Claude Code subprocess fails
+- **THEN** the system captures stderr, logs error, falls back to keyword search, and displays error message
 
-### Requirement: Response Formatting
-The system SHALL format Claude's responses for optimal CLI display.
+### Requirement: Performance Monitoring
+The system SHALL provide feedback on Claude Code's analysis progress.
 
-#### Scenario: Display formatted response
-- **WHEN** Claude returns a response
-- **THEN** the system formats it with:
-  - Clear section headers
-  - Proper line breaks
-  - Colored output for readability (using chalk)
+#### Scenario: Show progress indicator
+- **WHEN** Claude Code is analyzing files
+- **THEN** the system displays a spinner with status text
 
-#### Scenario: Include source references
-- **WHEN** displaying Claude's response
-- **THEN** the system includes references to the source files and dates used
+#### Scenario: Handle cancellation
+- **WHEN** the user presses Ctrl+C during recall
+- **THEN** the system kills the Claude Code subprocess and exits gracefully
 

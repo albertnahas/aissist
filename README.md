@@ -157,19 +157,30 @@ aissist reflect show --date 2024-01-15
 
 ### `aissist recall`
 
-AI-powered semantic search across all your memories.
+AI-powered semantic search across all your memories using Claude Code's file analysis capabilities.
 
 **Arguments:**
-- `<query>` - Your search question
+- `<query>` - Your search question (natural language)
+
+**How it works:**
+- Claude Code uses Grep, Read, and Glob tools to semantically analyze your memory files
+- Finds related concepts, not just keyword matches (e.g., searching "productivity" also finds "efficiency", "time management")
+- No timeout issues - handles large memory collections efficiently
+- Falls back to keyword search if Claude Code is unavailable
 
 **Examples:**
 ```bash
+# Semantic queries - finds related concepts
 aissist recall "what did I learn about React hooks?"
 aissist recall "fitness goals from last week"
 aissist recall "work accomplishments this month"
+
+# Complex queries
+aissist recall "compare my goals from last week to this week"
+aissist recall "what are my thoughts on productivity?"
 ```
 
-**Note:** Requires Claude Code CLI to be installed and authenticated. Falls back to raw search results if Claude is unavailable.
+**Note:** Requires Claude Code CLI to be installed and authenticated. Falls back to keyword-based search if Claude Code is unavailable.
 
 ### `aissist path`
 
@@ -203,7 +214,7 @@ aissist path
 
 ## Claude AI Integration
 
-To use AI-powered recall, you need Claude Code installed and authenticated:
+To use AI-powered semantic recall, you need Claude Code installed and authenticated:
 
 1. **Install Claude Code:**
    - Download from [https://claude.ai/download](https://claude.ai/download)
@@ -221,14 +232,50 @@ claude login
 claude --version
 ```
 
-Without Claude Code installed, `aissist recall` will still work but show raw search results instead of AI-summarized answers.
+Without Claude Code installed, `aissist recall` will still work but show keyword-based search results instead of semantic analysis.
 
 ### Benefits of Claude Code Integration
 
+- **Semantic Understanding**: Finds related concepts, not just keyword matches
+- **File Analysis Tools**: Uses Grep, Read, and Glob for intelligent file discovery
+- **No Timeout Issues**: Handles large memory collections efficiently
 - **No API Key Management**: Uses your existing Claude authentication
 - **Seamless Experience**: Same auth as Claude Code
 - **No Additional Costs**: Covered by your Claude subscription
-- **Easy Setup**: Just install and login once
+- **Tool Restrictions**: Only uses safe, read-only tools (Grep, Read, Glob) for security
+
+### How Semantic Recall Works
+
+When you run `aissist recall "your query"`:
+
+1. **Session Check**: Verifies Claude Code is installed and authenticated
+2. **File Analysis**: Claude Code uses tools to search and analyze your memory files:
+   - **Grep**: Searches for relevant keywords across all markdown files
+   - **Read**: Reads promising files to gather detailed information
+   - **Glob**: Finds files by patterns (e.g., goals/2024-*.md)
+3. **Semantic Understanding**: Claude interprets your query and finds related concepts
+4. **Synthesized Answer**: Provides a comprehensive answer with dates and file references
+
+**Example**: Searching for "productivity" will also find files mentioning "efficiency", "time management", "focus", etc.
+
+### Troubleshooting Claude Code Integration
+
+**"Claude Code not found"**
+- Install Claude Code from https://claude.ai/download
+- Verify installation: `which claude` (should show path to claude binary)
+
+**"Not authenticated. Run: claude login"**
+- Run `claude login` to authenticate
+- Follow the prompts to complete authentication
+
+**"Claude Code failed, falling back to keyword search"**
+- Check Claude Code is working: `claude -p "test" --allowedTools ''`
+- Ensure you have an active Claude subscription
+- Check your internet connection
+
+**Recall is slow or timing out**
+- This should not happen with the new file analysis approach
+- If it does, please report as an issue with details about your memory size
 
 ## Claude Code Slash Command
 
