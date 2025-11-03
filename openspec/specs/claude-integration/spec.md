@@ -2,7 +2,6 @@
 
 ## Purpose
 Provides integration with Claude Code CLI using headless mode with file analysis tools for semantic memory recall. Replaced Agent SDK approach with tool-enabled subprocess execution for better performance and semantic understanding.
-
 ## Requirements
 ### Requirement: Claude Code Headless Execution
 The system SHALL use Claude Code CLI in headless mode with restricted file analysis tools.
@@ -35,7 +34,7 @@ The system SHALL detect and verify Claude Code availability and authentication.
 - **THEN** the system falls back to keyword search
 
 ### Requirement: Prompt Engineering for File Analysis
-The system SHALL construct prompts that optimize Claude Code's file analysis capabilities.
+The system SHALL construct prompts that optimize Claude Code's file analysis capabilities for both semantic recall and proposal generation.
 
 #### Scenario: Context-rich prompts
 - **WHEN** building a recall prompt
@@ -44,6 +43,14 @@ The system SHALL construct prompts that optimize Claude Code's file analysis cap
 #### Scenario: Tool usage guidance
 - **WHEN** Claude Code receives the prompt
 - **THEN** it's instructed to use Grep for discovery, Read for analysis, and think semantically
+
+#### Scenario: Proposal generation prompt
+- **WHEN** building a proposal generation prompt
+- **THEN** the system includes timeframe context, data summaries (goals, history, reflections), and instructions to propose 3-5 actionable items
+
+#### Scenario: Prompt includes data locations
+- **WHEN** building a proposal prompt
+- **THEN** the system specifies file paths for goals, history, and reflections directories so Claude can explore them
 
 ### Requirement: Tool-Based File Discovery
 The system SHALL enable Claude Code to discover and analyze files using tools rather than pre-selected excerpts.
