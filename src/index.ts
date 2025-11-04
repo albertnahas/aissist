@@ -16,6 +16,7 @@ import { reflectCommand } from './commands/reflect.js';
 import { recallCommand } from './commands/recall.js';
 import { pathCommand } from './commands/path.js';
 import { proposeCommand } from './commands/propose.js';
+import { todoCommand } from './commands/todo.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -58,6 +59,7 @@ program.addCommand(historyCommand);
 program.addCommand(contextCommand);
 program.addCommand(reflectCommand);
 program.addCommand(proposeCommand);
+program.addCommand(todoCommand);
 
 program
   .command('recall')

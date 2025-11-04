@@ -81,6 +81,7 @@ export async function initializeStorage(basePath: string): Promise<void> {
   await ensureDirectory(join(basePath, 'history'));
   await ensureDirectory(join(basePath, 'context'));
   await ensureDirectory(join(basePath, 'reflections'));
+  await ensureDirectory(join(basePath, 'todos'));
   await ensureDirectory(join(basePath, 'slash-commands'));
 
   // Create default config if it doesn't exist
@@ -458,4 +459,186 @@ export async function getActiveGoals(storagePath: string): Promise<ActiveGoal[]>
   }
 
   return activeGoals;
+}
+
+/**
+ * Todo entry interface
+ */
+export interface TodoEntry {
+  timestamp: string;
+  text: string;
+  completed: boolean;
+  goal: string | null;
+  rawEntry: string;
+}
+
+/**
+ * Parse a single todo entry from markdown content
+ */
+function parseTodoEntry(entry: string): TodoEntry | null {
+  const trimmed = entry.trim();
+  if (!trimmed) return null;
+
+  // Match format: ## HH:MM\n\n- [x] or - [ ] Todo text (Goal: codename)
+  const headerMatch = trimmed.match(/^##\s+(\d{2}:\d{2})/);
+  if (!headerMatch) return null;
+
+  const timestamp = headerMatch[1];
+
+  // Extract checkbox content after header
+  const afterHeader = trimmed.substring(headerMatch[0].length).trim();
+  const checkboxMatch = afterHeader.match(/^-\s+\[([ x])\]\s+(.+)$/m);
+
+  if (!checkboxMatch) return null;
+
+  const completed = checkboxMatch[1] === 'x';
+  const todoContent = checkboxMatch[2];
+
+  // Extract goal if present: (Goal: codename)
+  const goalMatch = todoContent.match(/\(Goal:\s+([a-z0-9-]+)\)\s*$/);
+  const goal = goalMatch ? goalMatch[1] : null;
+  const text = goalMatch ? todoContent.substring(0, goalMatch.index).trim() : todoContent;
+
+  return {
+    timestamp,
+    text,
+    completed,
+    goal,
+    rawEntry: trimmed,
+  };
+}
+
+/**
+ * Parse all todo entries from a markdown file content
+ */
+export function parseTodoEntries(content: string): TodoEntry[] {
+  if (!content) return [];
+
+  // Split by ## headers
+  const entries = content.split(/(?=^## )/gm).filter(e => e.trim());
+  return entries.map(parseTodoEntry).filter((e): e is TodoEntry => e !== null);
+}
+
+/**
+ * Update todo completion status in a file
+ */
+export async function updateTodoStatus(
+  filePath: string,
+  indexOrText: number | string,
+  completed: boolean
+): Promise<TodoEntry | null> {
+  const content = await readMarkdown(filePath);
+  if (!content) return null;
+
+  const entries = parseTodoEntries(content);
+
+  let todoIndex: number;
+  if (typeof indexOrText === 'number') {
+    todoIndex = indexOrText;
+  } else {
+    // Find by text substring (case insensitive)
+    todoIndex = entries.findIndex(e =>
+      e.text.toLowerCase().includes(indexOrText.toLowerCase())
+    );
+  }
+
+  if (todoIndex === -1 || todoIndex >= entries.length) return null;
+
+  const todo = entries[todoIndex];
+
+  // Build updated entry
+  const checkbox = completed ? '[x]' : '[ ]';
+  const goalSuffix = todo.goal ? ` (Goal: ${todo.goal})` : '';
+  const newEntry = `## ${todo.timestamp}\n\n- ${checkbox} ${todo.text}${goalSuffix}`;
+
+  entries[todoIndex] = {
+    ...todo,
+    completed,
+    rawEntry: newEntry,
+  };
+
+  // Rebuild file content
+  const newContent = entries.map(e => e.rawEntry).join('\n\n');
+  await writeFile(filePath, newContent);
+
+  return entries[todoIndex];
+}
+
+/**
+ * Remove a todo entry from a file by index or text match
+ */
+export async function removeTodoEntry(
+  filePath: string,
+  indexOrText: number | string
+): Promise<TodoEntry | null> {
+  const content = await readMarkdown(filePath);
+  if (!content) return null;
+
+  const entries = parseTodoEntries(content);
+
+  let todoIndex: number;
+  if (typeof indexOrText === 'number') {
+    todoIndex = indexOrText;
+  } else {
+    todoIndex = entries.findIndex(e =>
+      e.text.toLowerCase().includes(indexOrText.toLowerCase())
+    );
+  }
+
+  if (todoIndex === -1 || todoIndex >= entries.length) return null;
+
+  const removed = entries[todoIndex];
+  entries.splice(todoIndex, 1);
+
+  // Rebuild file content
+  const newContent = entries.length > 0
+    ? entries.map(e => e.rawEntry).join('\n\n')
+    : '';
+  await writeFile(filePath, newContent);
+
+  return removed;
+}
+
+/**
+ * Update todo text
+ */
+export async function updateTodoText(
+  filePath: string,
+  indexOrText: number | string,
+  newText: string
+): Promise<TodoEntry | null> {
+  const content = await readMarkdown(filePath);
+  if (!content) return null;
+
+  const entries = parseTodoEntries(content);
+
+  let todoIndex: number;
+  if (typeof indexOrText === 'number') {
+    todoIndex = indexOrText;
+  } else {
+    todoIndex = entries.findIndex(e =>
+      e.text.toLowerCase().includes(indexOrText.toLowerCase())
+    );
+  }
+
+  if (todoIndex === -1 || todoIndex >= entries.length) return null;
+
+  const todo = entries[todoIndex];
+
+  // Build updated entry with new text
+  const checkbox = todo.completed ? '[x]' : '[ ]';
+  const goalSuffix = todo.goal ? ` (Goal: ${todo.goal})` : '';
+  const newEntry = `## ${todo.timestamp}\n\n- ${checkbox} ${newText}${goalSuffix}`;
+
+  entries[todoIndex] = {
+    ...todo,
+    text: newText,
+    rawEntry: newEntry,
+  };
+
+  // Rebuild file content
+  const newContent = entries.map(e => e.rawEntry).join('\n\n');
+  await writeFile(filePath, newContent);
+
+  return entries[todoIndex];
 }

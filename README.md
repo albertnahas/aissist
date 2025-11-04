@@ -6,7 +6,8 @@ A local-first, AI-powered CLI personal assistant for tracking goals, reflections
 
 - **Local-First**: All data stored locally in Markdown files
 - **Dual Storage**: Global (~/.aissist/) and project-specific (./.aissist/) modes
-- **Goal Tracking**: Log and review your goals
+- **Goal Tracking**: Log and review your goals with AI-generated codenames
+- **Todo Management**: Track daily tasks with checkbox UI and automatic history logging
 - **History Logging**: Track daily activities and events
 - **Context Management**: Organize information by context (work, diet, fitness, etc.)
 - **Guided Reflection**: Interactive prompts for structured self-reflection
@@ -184,6 +185,80 @@ aissist history show
 aissist history show --date 2024-01-15
 ```
 
+### `aissist todo`
+
+Manage small, actionable tasks with optional goal linkage. Completed todos are automatically logged to history.
+
+**Features:**
+- **Quick Task Capture**: Add todos with minimal friction
+- **Interactive Completion**: Checkbox UI for batch completion
+- **Auto History Logging**: Completed todos logged to history with timestamp
+- **Goal Linking**: Link todos to goals via keyword matching or interactive selection
+- **Date-Specific**: Organize todos by date
+
+**Subcommands:**
+- `add <text> [--goal [keyword]] [--date <date>]` - Add a new todo
+- `list [--date <date>] [--plain] [--goal <codename>]` - List todos (interactive by default)
+- `done <indexOrText>` - Mark a todo as complete and log to history
+- `remove <indexOrText>` - Remove a todo without logging to history
+- `edit <indexOrText>` - Edit a todo's text
+
+**Examples:**
+```bash
+# Add simple todos
+aissist todo add "Review PR #123"
+aissist todo add "Write documentation"
+
+# Add todo with goal linking
+aissist todo add "Fix login bug" --goal "auth"
+aissist todo add "Update README" --goal  # Prompts for goal selection
+
+# Add todo for specific date
+aissist todo add "Call dentist" --date 2025-11-05
+
+# List todos (interactive checkbox UI)
+aissist todo list
+
+# List in plain text mode
+aissist todo list --plain
+
+# Filter by goal
+aissist todo list --goal complete-mvp
+
+# Mark todos as complete (by index or text)
+aissist todo done 1
+aissist todo done "Review PR"
+
+# Edit todo
+aissist todo edit 2
+
+# Remove todo
+aissist todo remove 3
+```
+
+**Todo Format:**
+Todos are stored in checkbox format:
+```markdown
+## 14:30
+
+- [ ] Review PR #123
+
+## 14:32
+
+- [ ] Write documentation (Goal: complete-mvp)
+```
+
+When completed, todos are marked with `[x]` and logged to history:
+```markdown
+## 16:45
+
+Review PR #123
+
+Completed from TODO
+
+Goal: complete-mvp
+```
+
 ### `aissist context`
 
 Manage context-specific information.
@@ -265,6 +340,8 @@ aissist path
 │       └── YYYY-MM-DD.md
 ├── history/                 # Activity logs
 │   └── YYYY-MM-DD.md
+├── todos/                   # Task management
+│   └── YYYY-MM-DD.md        # Daily todos with checkbox format
 ├── context/                 # Context-specific info
 │   ├── work/
 │   │   └── YYYY-MM-DD.md

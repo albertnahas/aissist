@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { join } from 'path';
-import { confirm, input } from '@inquirer/prompts';
+import { input, select } from '@inquirer/prompts';
 import ora from 'ora';
 import chalk from 'chalk';
 import { getStoragePath, appendToMarkdown } from '../utils/storage.js';
@@ -132,15 +132,24 @@ proposeCommand
         console.log('\n' + response);
         console.log(chalk.dim('\n\nPowered by Claude Code'));
 
-        // Offer to save proposals as goals
+        // Offer post-proposal actions
         console.log();
-        const shouldSave = await confirm({
-          message: 'Want to save these proposals as goals?',
-          default: false,
+        const action = await select({
+          message: 'What would you like to do with these proposals?',
+          choices: [
+            { name: 'Create TODOs (recommended)', value: 'todo' },
+            { name: 'Save as goals', value: 'goal' },
+            { name: 'Skip', value: 'skip' },
+          ],
+          default: 'todo',
         });
 
-        if (shouldSave) {
+        if (action === 'todo') {
+          await saveProposalsAsTodos(response, storagePath, goalLinkResult.codename);
+        } else if (action === 'goal') {
           await saveProposalsAsGoals(response, storagePath, goalLinkResult.codename);
+        } else {
+          info('Proposals not saved');
         }
 
       } catch (claudeError) {
@@ -158,6 +167,48 @@ proposeCommand
       throw err;
     }
   });
+
+/**
+ * Parse and save proposal items as todos
+ */
+async function saveProposalsAsTodos(response: string, storagePath: string, linkedGoalCodename: string | null = null): Promise<void> {
+  const spinner = ora('Saving proposals as todos...').start();
+
+  try {
+    // Extract numbered items from the response
+    const lines = response.split('\n');
+    const proposals: string[] = [];
+
+    for (const line of lines) {
+      const match = line.match(/^\s*\d+\.\s+(.+)/);
+      if (match) {
+        proposals.push(match[1].trim());
+      }
+    }
+
+    if (proposals.length === 0) {
+      spinner.warn('No numbered proposals found to save');
+      return;
+    }
+
+    // Save each proposal as a todo
+    const date = getCurrentDate();
+    const time = getCurrentTime();
+    const filePath = join(storagePath, 'todos', `${date}.md`);
+
+    const goalSuffix = linkedGoalCodename ? ` (Goal: ${linkedGoalCodename})` : '';
+
+    for (const proposal of proposals) {
+      const entry = `## ${time}\n\n- [ ] ${proposal}${goalSuffix}`;
+      await appendToMarkdown(filePath, entry);
+    }
+
+    spinner.succeed(`Saved ${proposals.length} proposal(s) as todos!`);
+  } catch (err) {
+    spinner.fail('Failed to save proposals as todos');
+    error((err as Error).message);
+  }
+}
 
 /**
  * Parse and save proposal items as goals
