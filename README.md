@@ -538,6 +538,37 @@ npm run build
 node dist/index.js init
 ```
 
+## Claude Code Plugin
+
+Aissist provides a Claude Code plugin for seamless integration with your AI-powered coding workflow.
+
+### Features
+
+- **AI-Enhanced Logging**: Quick work logging with automatic enhancement and goal linking
+- **GitHub Integration**: Import commits and PRs as history entries
+- **Semantic Recall**: Search your history with natural language
+- **Accomplishment Reports**: Generate reports for standups and reviews
+- **Skill Integration**: Automatic CLI access when you mention goals or todos
+
+### Installation
+
+```bash
+# Install from marketplace
+claude plugin marketplace add albertnahas/aissist
+claude plugin install aissist
+```
+
+### Quick Commands
+
+```
+/aissist:log Fixed auth bug, took 3 hours
+/aissist:log-github "this week"
+/aissist:recall "what did I work on last month?"
+/aissist:report "this week" --purpose standup
+```
+
+See [aissist-plugin/README.md](./aissist-plugin/README.md) for complete plugin documentation.
+
 ## Contributing
 
 Contributions are welcome! Please read CONTRIBUTING.md for guidelines.
