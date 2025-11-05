@@ -43,7 +43,10 @@ describe('storage utilities', () => {
       };
 
       const result = ConfigSchema.parse(config);
-      expect(result).toEqual(config);
+      expect(result.version).toBe(config.version);
+      expect(result.createdAt).toBe(config.createdAt);
+      expect(result.lastModified).toBe(config.lastModified);
+      expect(result.animations).toEqual({ enabled: true });
     });
 
     it('should use default version if not provided', () => {
@@ -113,7 +116,6 @@ describe('storage utilities', () => {
       await expect(access(join(testDir, 'history'))).resolves.toBeUndefined();
       await expect(access(join(testDir, 'context'))).resolves.toBeUndefined();
       await expect(access(join(testDir, 'reflections'))).resolves.toBeUndefined();
-      await expect(access(join(testDir, 'slash-commands'))).resolves.toBeUndefined();
     });
 
     it('should create default config.json', async () => {
@@ -123,13 +125,6 @@ describe('storage utilities', () => {
       expect(config.version).toBe('1.0.0');
       expect(config.createdAt).toBeDefined();
       expect(config.lastModified).toBeDefined();
-    });
-
-    it('should create slash command manifest', async () => {
-      await initializeStorage(testDir);
-
-      const manifestPath = join(testDir, 'slash-commands', 'aissist.json');
-      await expect(access(manifestPath)).resolves.toBeUndefined();
     });
 
     it('should not overwrite existing config', async () => {

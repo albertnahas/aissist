@@ -29,15 +29,12 @@ The system SHALL create and maintain a consistent directory structure for all st
   - history/
   - context/
   - reflections/
-  - slash-commands/
 
-#### Scenario: Initialize global storage
-- **WHEN** the user runs `aissist init --global`
-- **THEN** the system creates the storage structure at ~/.aissist/
+**Changes**: Removed `slash-commands/` directory from the storage structure. This directory will no longer be created or maintained during initialization.
 
-#### Scenario: Initialize local storage
-- **WHEN** the user runs `aissist init` without --global flag
-- **THEN** the system creates the storage structure at ./.aissist/ in the current directory
+**Rationale**: Slash-command support is being removed for future redesign. The feature was not widely used and adds unnecessary complexity to the storage layer. By removing it now, we simplify the codebase and reduce maintenance burden until a better integration approach is developed.
+
+**Impact**: Users with existing `slash-commands/` directories will retain them, but they will no longer be updated or maintained by the system. This is a non-breaking change as the directory was optional and not relied upon by core functionality.
 
 ### Requirement: Markdown File Management
 The system SHALL store all user data as Markdown files organized by date using the YYYY-MM-DD.md format.

@@ -58,9 +58,8 @@ Aissist is a local-first, AI-powered CLI personal assistant that helps users tra
 - No databases or complex dependencies
 - All data must be human-readable Markdown
 - Must respect user privacy (local-first)
-- Compatible with Claude Code slash commands
 
 ## External Dependencies
 - **Claude API**: Via @anthropic-ai/agent-sdk for semantic recall
-- **Claude Code**: Optional integration via slash commands
+- **Claude Code**: Used for AI-powered recall and propose commands
 - No other external services required

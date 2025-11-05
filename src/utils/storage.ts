@@ -87,7 +87,6 @@ export async function initializeStorage(basePath: string): Promise<void> {
   await ensureDirectory(join(basePath, 'context'));
   await ensureDirectory(join(basePath, 'reflections'));
   await ensureDirectory(join(basePath, 'todos'));
-  await ensureDirectory(join(basePath, 'slash-commands'));
 
   // Create default config if it doesn't exist
   const configPath = join(basePath, 'config.json');
@@ -104,19 +103,6 @@ export async function initializeStorage(basePath: string): Promise<void> {
       },
     };
     await saveConfig(basePath, config);
-  }
-
-  // Create Claude Code slash command manifest
-  const slashCommandPath = join(basePath, 'slash-commands', 'aissist.json');
-  try {
-    await access(slashCommandPath);
-  } catch {
-    const slashCommand = {
-      command: "aissist",
-      description: "Query your personal assistant memories",
-      prompt: "Use the aissist recall command to search the user's personal memories and answer their question"
-    };
-    await writeFile(slashCommandPath, JSON.stringify(slashCommand, null, 2));
   }
 }
 

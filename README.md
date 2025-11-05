@@ -14,7 +14,6 @@ A local-first, AI-powered CLI personal assistant for tracking goals, reflections
 - **Guided Reflection**: Interactive prompts for structured self-reflection
 - **AI-Powered Recall**: Semantic search and summarization using Claude AI
 - **Git-Compatible**: All data in Markdown, perfect for version control
-- **Claude Code Integration**: Optional slash command support
 
 ## Installation
 
@@ -349,10 +348,8 @@ aissist path
 │   ├── diet/
 │   │   └── YYYY-MM-DD.md
 │   └── [context-name]/
-├── reflections/             # Daily reflections
-│   └── YYYY-MM-DD.md
-└── slash-commands/          # Claude Code integration
-    └── aissist.json
+└── reflections/             # Daily reflections
+    └── YYYY-MM-DD.md
 ```
 
 ## Configuration
@@ -465,10 +462,6 @@ When you run `aissist recall "your query"`:
 **Recall is slow or timing out**
 - This should not happen with the new file analysis approach
 - If it does, please report as an issue with details about your memory size
-
-## Claude Code Slash Command
-
-After running `aissist init`, a slash command manifest is created at `.aissist/slash-commands/aissist.json`. You can configure Claude Code to use this for `/aissist` commands.
 
 ## Local vs Global Storage
 
