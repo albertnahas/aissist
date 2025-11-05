@@ -5,6 +5,9 @@ import { confirm } from '@inquirer/prompts';
 import { initializeStorage } from '../utils/storage.js';
 import { success, warn, info, error } from '../utils/cli.js';
 import { checkClaudeCodeInstalled, integrateClaudeCodePlugin } from '../utils/claude-plugin.js';
+import { promptForFirstGoal, promptForFirstTodo } from '../utils/onboarding.js';
+import { createGoalInteractive } from '../utils/goal-helpers.js';
+import { createTodoInteractive } from '../utils/todo-helpers.js';
 import ora from 'ora';
 
 interface InitOptions {
@@ -13,6 +16,9 @@ interface InitOptions {
 
 export async function initCommand(options: InitOptions): Promise<void> {
   const basePath = options.global ? join(homedir(), '.aissist') : join(process.cwd(), '.aissist');
+
+  // Track if storage was newly created
+  let storageNewlyCreated = false;
 
   // Check if already exists
   try {
@@ -24,6 +30,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
     await initializeStorage(basePath);
     success(`Initialized aissist storage at: ${basePath}`);
     info('You can now start tracking your goals, history, context, and reflections!');
+    storageNewlyCreated = true;
   }
 
   // Check for Claude Code integration
@@ -61,6 +68,38 @@ export async function initCommand(options: InitOptions): Promise<void> {
         spinner.fail('Installation error');
         error(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
+    }
+  }
+
+  // Post-initialization onboarding: prompt for first goal
+  if (storageNewlyCreated) {
+    info('');
+    try {
+      const shouldCreateGoal = await promptForFirstGoal();
+
+      if (shouldCreateGoal) {
+        // Create first goal interactively
+        const goalResult = await createGoalInteractive();
+
+        if (goalResult.success && goalResult.codename) {
+          // Post-goal onboarding: prompt for first todo linked to goal
+          info('');
+          try {
+            const shouldCreateTodo = await promptForFirstTodo(goalResult.codename);
+
+            if (shouldCreateTodo) {
+              // Create first todo with goal pre-linked
+              await createTodoInteractive({ goal: goalResult.codename });
+            }
+          } catch (err) {
+            // User cancelled todo prompt with Ctrl+C - gracefully exit
+            info('');
+          }
+        }
+      }
+    } catch (err) {
+      // User cancelled goal prompt with Ctrl+C - gracefully exit
+      info('');
     }
   }
 

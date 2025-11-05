@@ -19,6 +19,8 @@ import { generateGoalCodename } from '../llm/claude.js';
 import { parseTimeframe } from '../utils/timeframe-parser.js';
 import chalk from 'chalk';
 import { playCompletionAnimation } from '../utils/animations.js';
+import { promptForFirstTodo } from '../utils/onboarding.js';
+import { createTodoInteractive } from '../utils/todo-helpers.js';
 
 const goalCommand = new Command('goal');
 
@@ -95,6 +97,20 @@ goalCommand
       }
       if (deadlineDate) {
         info(`Deadline: ${deadlineDate}`);
+      }
+
+      // Post-goal onboarding: prompt for linked todo
+      info('');
+      try {
+        const shouldCreateTodo = await promptForFirstTodo(codename);
+
+        if (shouldCreateTodo) {
+          // Create todo with goal pre-linked
+          await createTodoInteractive({ goal: codename });
+        }
+      } catch (err) {
+        // User cancelled todo prompt with Ctrl+C - gracefully exit
+        // Goal is already saved, so we just exit
       }
     } catch (err) {
       error(`Failed to add goal: ${(err as Error).message}`);

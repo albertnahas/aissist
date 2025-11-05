@@ -36,6 +36,13 @@ aissist init --global
 - **Local**: Project-specific goals and todos (e.g., software project tasks)
 - **Global**: Personal life goals, general todos, daily reflections
 
+**Interactive Onboarding:**
+After successful initialization, aissist will guide you through:
+1. Creating your first goal (optional, can be skipped)
+2. Adding a todo linked to that goal (optional, can be skipped)
+
+This interactive flow helps you get started quickly. You can press Ctrl+C at any time to skip prompts.
+
 ## Core Commands
 
 ### Goal Management
@@ -65,6 +72,7 @@ aissist goal deadline <codename> "2024-12-31"
 - Deadline support with natural language parsing
 - Interactive management with checkbox UI
 - Priority tracking (high/normal/low)
+- Post-creation prompt to add linked todos (helps build goal-driven workflows)
 
 ### Todo Management
 

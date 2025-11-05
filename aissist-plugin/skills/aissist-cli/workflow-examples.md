@@ -3,6 +3,7 @@
 Real-world workflows and usage patterns for effective use of aissist.
 
 ## Table of Contents
+- [Getting Started](#getting-started)
 - [Daily Workflow](#daily-workflow)
 - [Goal-Driven Workflow](#goal-driven-workflow)
 - [Context-Specific Workflows](#context-specific-workflows)
@@ -10,6 +11,48 @@ Real-world workflows and usage patterns for effective use of aissist.
 - [GitHub Integration](#github-integration)
 - [Multi-Goal Coordination](#multi-goal-coordination)
 - [Deadline Management](#deadline-management)
+
+---
+
+## Getting Started
+
+### First-Time Setup with Interactive Onboarding
+
+When initializing aissist for the first time, the CLI guides you through creating your first goal and todo:
+
+```bash
+# Initialize storage
+aissist init
+
+# Interactive prompts:
+# 1. "Would you like to set your first goal?" → Enter goal text
+# 2. "Enter deadline (default: Tomorrow):" → Accept default or customize
+# 3. "Would you like to add a todo and link it to this goal?" → Enter todo text
+# 4. "Enter priority (default: medium):" → Set priority level
+```
+
+**Example session:**
+```
+$ aissist init
+✓ Initialized aissist storage at: /Users/you/.aissist
+ℹ You can now start tracking your goals, history, context, and reflections!
+
+? Would you like to set your first goal? (Y/n) y
+? Enter your goal: Learn TypeScript
+✓ Goal added with codename: learn-typescript
+ℹ Deadline: 2025-11-06
+
+? Would you like to add a todo and link it to this goal? (Y/n) y
+? Enter your todo: Complete TypeScript handbook
+? Enter priority (default: medium): high
+✓ Todo added with priority 5 and linked to goal: learn-typescript
+```
+
+**Tips:**
+- Press Enter to accept defaults (quick setup)
+- Type specific values for custom deadlines/priorities
+- Press Ctrl+C to skip prompts and use commands manually
+- Prompts only appear in interactive terminals (not in scripts/CI)
 
 ---
 
@@ -77,11 +120,14 @@ Complete workflow from goal creation to completion:
 
 ```bash
 # 1. Create the goal with deadline
-aissist goal add "Master React Testing Library" --deadline "end of month" --priority high
+aissist goal add "Master React Testing Library" --deadline "end of month"
 
 # Output: Created goal with codename 'master-react-testing-library'
+# Interactive prompt: "Would you like to add a todo and link it to this goal?"
+#   - If yes: Enter first todo immediately with goal pre-linked
+#   - If no: Add todos manually later
 
-# 2. Break down into todos
+# 2. Break down into todos (if not added via prompt)
 aissist todo add "Read React Testing Library docs" --goal master-react-testing-library
 aissist todo add "Complete Jest testing tutorial" --goal master-react-testing-library
 aissist todo add "Write tests for user component" --goal master-react-testing-library
