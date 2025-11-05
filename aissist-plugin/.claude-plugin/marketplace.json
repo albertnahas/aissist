@@ -1,0 +1,17 @@
+{
+  "name": "aissist-marketplace",
+  "owner": {
+    "name": "Albert Nahas"
+  },
+  "plugins": [
+    {
+      "name": "aissist",
+      "description": "AI-powered personal assistant for tracking goals, history, reflections, and context with semantic recall",
+      "version": "1.0.0",
+      "author": {
+        "name": "Albert Nahas"
+      },
+      "source": "./"
+    }
+  ]
+}

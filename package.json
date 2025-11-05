@@ -7,6 +7,12 @@
     "aissist": "bin/aissist.js"
   },
   "type": "module",
+  "files": [
+    "dist",
+    "bin",
+    ".claude-plugin",
+    "plugin"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
