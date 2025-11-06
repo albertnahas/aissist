@@ -300,6 +300,29 @@ Aissist uses automated GitHub Actions workflows to handle releases. When you pus
 
 #### Creating a Release
 
+**Quick Start** (Recommended):
+
+Simply run the release command and follow the interactive prompts:
+
+```bash
+npm run release
+```
+
+The script will:
+1. Verify your environment is ready (clean working directory, on main branch, up to date)
+2. Prompt you to select version bump type (major, minor, or patch)
+3. Update all version files automatically
+4. Create git tag and push to GitHub
+5. Display the GitHub Actions workflow URL to monitor progress
+
+That's it! The automated workflow will handle building, testing, publishing to npm, and creating the GitHub release.
+
+---
+
+**Advanced: Manual Release Process**
+
+If you need manual control, you can create releases the traditional way:
+
 1. **Ensure main branch is ready**:
    ```bash
    git checkout main
@@ -372,6 +395,30 @@ The release workflow requires the following GitHub repository secrets:
 - Used for creating GitHub releases
 
 #### Troubleshooting Releases
+
+**Release script (`npm run release`) fails**:
+
+*Dirty working directory error*:
+- Commit or stash your changes: `git add . && git commit -m "your message"`
+- Or stash: `git stash`
+
+*Not on main branch error*:
+- Checkout main: `git checkout main`
+
+*Behind origin/main error*:
+- Pull latest changes: `git pull origin main`
+
+*Unpushed commits error*:
+- Push your commits first: `git push origin main`
+
+*Push failed error*:
+- Check network connection
+- Verify you have push permissions
+- Tag was created locally, you can push manually:
+  ```bash
+  git push origin main
+  git push origin v1.2.3
+  ```
 
 **Release workflow fails at npm publish**:
 - Verify NPM_TOKEN secret is configured

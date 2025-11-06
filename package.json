@@ -20,7 +20,8 @@
     "test:ui": "vitest --ui",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release": "node scripts/release.js"
   },
   "keywords": [
     "cli",
