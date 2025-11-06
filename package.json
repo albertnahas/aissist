@@ -1,6 +1,6 @@
 {
   "name": "aissist",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Connect your past, present, and future in Markdown—AI-powered CLI assistant with seamless Claude Code integration",
   "main": "dist/index.js",
   "bin": {
