@@ -343,6 +343,78 @@ Show the current storage path and whether it's global or local.
 **Example:**
 ```bash
 aissist path
+
+# Show read hierarchy (if enabled)
+aissist path --hierarchy
+```
+
+### `aissist config hierarchy`
+
+Manage hierarchical configuration for reading from parent directories.
+
+**Commands:**
+```bash
+# Show current hierarchy status
+aissist config hierarchy status
+
+# Enable hierarchical read access
+aissist config hierarchy enable
+
+# Disable hierarchical read access
+aissist config hierarchy disable
+```
+
+## Hierarchical Configuration for Monorepos
+
+Aissist supports hierarchical configuration, allowing you to access goals and data from parent directories while keeping writes isolated to your local directory. This is perfect for monorepos and nested projects.
+
+### How It Works
+
+- **Read from parents**: Access history, goals, and context from parent `.aissist` directories
+- **Write locally**: All changes are saved to your local `.aissist` directory only
+- **Opt-in**: Enable during initialization or anytime with `aissist config hierarchy enable`
+
+### Use Cases
+
+1. **Monorepo workflows**: Access organization-level goals while working in package subdirectories
+2. **Nested projects**: Inherit context from parent projects without polluting them
+3. **Team collaboration**: Share goals at the repo level while maintaining personal local notes
+
+### Example Flow
+
+```bash
+# Initialize in a subdirectory of a monorepo
+cd ~/monorepo/packages/api
+aissist init
+
+# Aissist detects parent directories:
+# ✓ Detected .aissist directories in parent paths:
+#   • ~/monorepo/.aissist (2 levels up)
+#   • ~/.aissist (global)
+#
+# ? Would you like to include these directories for reading? (Y/n)
+
+# Choose yes to enable hierarchy
+# Now you can see goals from all levels:
+aissist goal list  # Shows goals from local, monorepo, and global
+
+# But writes stay local:
+aissist goal add "Build API v2"  # Saved to ~/monorepo/packages/api/.aissist/
+```
+
+### Runtime Configuration
+
+Toggle hierarchical access anytime without re-initializing:
+
+```bash
+# Enable hierarchy
+aissist config hierarchy enable
+
+# Check status
+aissist config hierarchy status
+
+# Disable (sandbox mode)
+aissist config hierarchy disable
 ```
 
 ## Storage Structure

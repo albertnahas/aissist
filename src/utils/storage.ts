@@ -13,6 +13,7 @@ export const ConfigSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({ enabled: true }),
+  readPaths: z.array(z.string()).optional().default([]),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -42,6 +43,32 @@ export async function findStoragePath(startPath: string = process.cwd()): Promis
 }
 
 /**
+ * Discover all .aissist directories in ancestor paths
+ * Walks upward from startPath to filesystem root, collecting all .aissist paths
+ * Excludes the immediate .aissist at startPath/.aissist (for finding parents only)
+ */
+export async function discoverHierarchy(startPath: string): Promise<string[]> {
+  const discovered: string[] = [];
+  let currentPath = dirname(startPath); // Start from parent
+
+  while (true) {
+    const aissistPath = join(currentPath, '.aissist');
+    try {
+      await access(aissistPath);
+      discovered.push(aissistPath);
+    } catch {
+      // Not found, continue
+    }
+
+    const parentPath = dirname(currentPath);
+    if (parentPath === currentPath) break; // Reached root
+    currentPath = parentPath;
+  }
+
+  return discovered;
+}
+
+/**
  * Get storage path with global/local fallback
  */
 export async function getStoragePath(): Promise<string> {
@@ -61,6 +88,21 @@ export async function isGlobalStorage(): Promise<boolean> {
   const storagePath = await getStoragePath();
   const globalPath = join(homedir(), '.aissist');
   return storagePath === globalPath;
+}
+
+/**
+ * Get all read paths (local + configured parents)
+ * Returns array with local path first, followed by parent paths from config
+ */
+export async function getReadPaths(storagePath: string): Promise<string[]> {
+  try {
+    const config = await loadConfig(storagePath);
+    const readPaths = config.readPaths || [];
+    return [storagePath, ...readPaths];
+  } catch {
+    // Config doesn't exist or can't be loaded, return just the storage path
+    return [storagePath];
+  }
 }
 
 /**
@@ -102,6 +144,7 @@ export async function initializeStorage(basePath: string): Promise<void> {
       animations: {
         enabled: true,
       },
+      readPaths: [],
     };
     await saveConfig(basePath, config);
   }
@@ -419,9 +462,9 @@ export interface ActiveGoal {
 }
 
 /**
- * Get all active goals (excluding finished goals) across all dates
+ * Get goals from a single storage path
  */
-export async function getActiveGoals(storagePath: string): Promise<ActiveGoal[]> {
+async function getGoalsFromPath(storagePath: string): Promise<ActiveGoal[]> {
   const goalsDir = join(storagePath, 'goals');
   const activeGoals: ActiveGoal[] = [];
 
@@ -454,6 +497,35 @@ export async function getActiveGoals(storagePath: string): Promise<ActiveGoal[]>
   }
 
   return activeGoals;
+}
+
+/**
+ * Get all active goals (excluding finished goals) across all dates
+ * Supports hierarchical configuration - reads from local + parent paths
+ * Local goals take precedence when codenames conflict
+ */
+export async function getActiveGoals(storagePath: string): Promise<ActiveGoal[]> {
+  const readPaths = await getReadPaths(storagePath);
+
+  // Read goals from all paths in parallel
+  const goalArrays = await Promise.all(
+    readPaths.map(path => getGoalsFromPath(path))
+  );
+
+  // Merge with local precedence (first path = local, takes priority)
+  const seenCodenames = new Set<string>();
+  const mergedGoals: ActiveGoal[] = [];
+
+  for (const goals of goalArrays) {
+    for (const goal of goals) {
+      if (!seenCodenames.has(goal.codename)) {
+        mergedGoals.push(goal);
+        seenCodenames.add(goal.codename);
+      }
+    }
+  }
+
+  return mergedGoals;
 }
 
 /**

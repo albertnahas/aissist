@@ -1,17 +1,60 @@
-import { join } from 'path';
+import { join, relative } from 'path';
 import { homedir } from 'os';
 import { access } from 'fs/promises';
 import { confirm } from '@inquirer/prompts';
-import { initializeStorage } from '../utils/storage.js';
+import { initializeStorage, discoverHierarchy, loadConfig, saveConfig } from '../utils/storage.js';
 import { success, warn, info, error } from '../utils/cli.js';
 import { checkClaudeCodeInstalled, integrateClaudeCodePlugin } from '../utils/claude-plugin.js';
 import { promptForFirstGoal, promptForFirstTodo } from '../utils/onboarding.js';
 import { createGoalInteractive } from '../utils/goal-helpers.js';
 import { createTodoInteractive } from '../utils/todo-helpers.js';
+import { isTTY } from '../utils/tty.js';
 import ora from 'ora';
 
 interface InitOptions {
   global?: boolean;
+}
+
+/**
+ * Calculate relative depth from current directory to a path
+ */
+function calculateDepth(from: string, to: string): string {
+  const globalPath = join(homedir(), '.aissist');
+
+  if (to === globalPath) {
+    return 'global';
+  }
+
+  const rel = relative(from, to);
+  const levels = rel.split('..').length - 1;
+
+  if (levels === 0) return 'local';
+  if (levels === 1) return '1 level up';
+  return `${levels} levels up`;
+}
+
+/**
+ * Prompt user to enable hierarchical configuration
+ */
+async function promptForHierarchy(basePath: string, discoveredPaths: string[]): Promise<boolean> {
+  if (!isTTY() || discoveredPaths.length === 0) {
+    return false;
+  }
+
+  info('');
+  info('✓ Detected .aissist directories in parent paths:');
+  for (const path of discoveredPaths) {
+    const depth = calculateDepth(basePath, path);
+    info(`  • ${path} (${depth})`);
+  }
+  info('');
+
+  const shouldEnable = await confirm({
+    message: 'Would you like to include these directories for reading?',
+    default: true,
+  });
+
+  return shouldEnable;
 }
 
 export async function initCommand(options: InitOptions): Promise<void> {
@@ -31,6 +74,24 @@ export async function initCommand(options: InitOptions): Promise<void> {
     success(`Initialized aissist storage at: ${basePath}`);
     info('You can now start tracking your goals, history, context, and reflections!');
     storageNewlyCreated = true;
+
+    // Discover parent .aissist directories for hierarchical configuration
+    const discoveredPaths = await discoverHierarchy(basePath);
+
+    if (discoveredPaths.length > 0) {
+      const shouldEnableHierarchy = await promptForHierarchy(basePath, discoveredPaths);
+
+      if (shouldEnableHierarchy) {
+        // Update config with discovered paths
+        const config = await loadConfig(basePath);
+        config.readPaths = discoveredPaths;
+        await saveConfig(basePath, config);
+
+        info('');
+        success(`Read access enabled for ${discoveredPaths.length} parent ${discoveredPaths.length === 1 ? 'directory' : 'directories'}`);
+        info('All changes will be saved to the local directory');
+      }
+    }
   }
 
   // Check for Claude Code integration

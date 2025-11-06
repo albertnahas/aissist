@@ -18,6 +18,7 @@ import { pathCommand } from './commands/path.js';
 import { proposeCommand } from './commands/propose.js';
 import { todoCommand } from './commands/todo.js';
 import { clearCommand } from './commands/clear.js';
+import { configCommand } from './commands/config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,6 +63,7 @@ program.addCommand(reflectCommand);
 program.addCommand(proposeCommand);
 program.addCommand(todoCommand);
 program.addCommand(clearCommand);
+program.addCommand(configCommand);
 
 program
   .command('recall')
@@ -78,9 +80,10 @@ program
 program
   .command('path')
   .description('Show current storage path')
-  .action(async () => {
+  .option('--hierarchy', 'Show read hierarchy (including parent paths)')
+  .action(async (options) => {
     try {
-      await pathCommand();
+      await pathCommand(options);
     } catch (error) {
       handleError(error);
     }

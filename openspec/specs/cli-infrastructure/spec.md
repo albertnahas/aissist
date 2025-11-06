@@ -59,3 +59,33 @@ The system SHALL provide an executable binary that can be invoked globally after
 - **WHEN** the user runs `npx aissist` without global installation
 - **THEN** the system executes the CLI tool directly
 
+### Requirement: Path Command Enhancements
+The system SHALL provide a `path` command to display current storage paths with support for hierarchical configuration.
+
+#### Scenario: Display write path
+- **WHEN** the user runs `aissist path`
+- **THEN** the system displays the local `.aissist` directory path
+- **AND** indicates it is the write path
+- **AND** displays "Storage path (writes): /home/user/project/.aissist"
+
+#### Scenario: Display read hierarchy
+- **GIVEN** hierarchical configuration is enabled with 2 parent paths
+- **WHEN** the user runs `aissist path --hierarchy` or `aissist path -v`
+- **THEN** the system displays the write path
+- **AND** lists all configured read paths with relative depth indicators
+- **AND** shows:
+  ```
+  Storage path (writes): /home/user/project/.aissist
+
+  Read hierarchy:
+    • /home/user/project/.aissist (local)
+    • /home/user/monorepo/.aissist (2 levels up)
+    • /home/user/.aissist (global)
+  ```
+
+#### Scenario: Display path in isolated mode
+- **GIVEN** hierarchical configuration is NOT enabled
+- **WHEN** the user runs `aissist path --hierarchy`
+- **THEN** the system displays only the local path
+- **AND** indicates "No hierarchical configuration (isolated mode)"
+

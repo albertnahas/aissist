@@ -43,6 +43,43 @@ After successful initialization, aissist will guide you through:
 
 This interactive flow helps you get started quickly. You can press Ctrl+C at any time to skip prompts.
 
+### Hierarchical Configuration (Monorepo Support)
+
+Aissist supports reading data from parent directories while keeping writes isolated to the local directory. Perfect for monorepos and nested projects.
+
+**Initialization with Hierarchy:**
+```bash
+cd ~/monorepo/packages/api
+aissist init
+
+# Aissist detects parent .aissist directories and prompts:
+# ✓ Detected .aissist directories in parent paths:
+#   • ~/monorepo/.aissist (2 levels up)
+#   • ~/.aissist (global)
+#
+# ? Would you like to include these directories for reading? (Y/n)
+```
+
+**Runtime Configuration:**
+```bash
+# Enable hierarchy after initialization
+aissist config hierarchy enable
+
+# Check current status
+aissist config hierarchy status
+
+# Disable (sandbox mode)
+aissist config hierarchy disable
+
+# View read hierarchy
+aissist path --hierarchy
+```
+
+**Behavior:**
+- **Read**: Access goals, history, and context from parent directories
+- **Write**: All changes saved to local directory only (no pollution of parent configs)
+- **Precedence**: Local data takes priority when codenames/identifiers conflict
+
 ## Core Commands
 
 ### Goal Management

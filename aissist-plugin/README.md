@@ -16,6 +16,7 @@ Aissist works natively with Claude Code through intelligent slash commands and a
 - **Accomplishment Reports**: Generate reports for standups, reviews, and more
 - **Skill Activation**: Automatic aissist CLI integration when you mention goals or todos
 - **Multimodal Support**: Log work with screenshots and images
+- **Hierarchical Configuration**: Access goals and data from parent directories (perfect for monorepos)
 
 ## Installation
 
