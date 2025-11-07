@@ -21,6 +21,7 @@ import chalk from 'chalk';
 import { playCompletionAnimation } from '../utils/animations.js';
 import { promptForFirstTodo } from '../utils/onboarding.js';
 import { createTodoInteractive } from '../utils/todo-helpers.js';
+import { showHint } from '../utils/hints.js';
 
 const goalCommand = new Command('goal');
 
@@ -101,6 +102,9 @@ goalCommand
       if (deadlineDate) {
         info(`Deadline: ${deadlineDate}`);
       }
+
+      // Show contextual hint
+      await showHint({ command: 'goal.add', metadata: { codename } });
 
       // Post-goal onboarding: prompt for linked todo
       info('');
@@ -261,6 +265,8 @@ goalCommand
       if (completed) {
         // Play completion animation for goal achievement
         await playCompletionAnimation(`Goal '${codename}' completed!`);
+        // Show contextual hint
+        await showHint({ command: 'goal.complete', metadata: { codename } });
       } else {
         error(`Goal '${codename}' not found`);
       }

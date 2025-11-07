@@ -147,4 +147,125 @@ hierarchyCommand.action(async () => {
   }
 });
 
+/**
+ * Enable hints
+ */
+export async function hintsEnableCommand(): Promise<void> {
+  const storagePath = await getStoragePath();
+  const config = await loadConfig(storagePath);
+
+  if (!config.hints) {
+    config.hints = { enabled: true, strategy: 'ai', timeout: 2000 };
+  } else {
+    config.hints.enabled = true;
+  }
+
+  await saveConfig(storagePath, config);
+  success('Hints enabled');
+}
+
+/**
+ * Disable hints
+ */
+export async function hintsDisableCommand(): Promise<void> {
+  const storagePath = await getStoragePath();
+  const config = await loadConfig(storagePath);
+
+  if (!config.hints) {
+    config.hints = { enabled: false, strategy: 'ai', timeout: 2000 };
+  } else {
+    config.hints.enabled = false;
+  }
+
+  await saveConfig(storagePath, config);
+  success('Hints disabled');
+}
+
+/**
+ * Set hints strategy
+ */
+export async function hintsStrategyCommand(strategy: string): Promise<void> {
+  if (strategy !== 'ai' && strategy !== 'static') {
+    throw new Error("Invalid strategy. Use 'ai' or 'static'");
+  }
+
+  const storagePath = await getStoragePath();
+  const config = await loadConfig(storagePath);
+
+  if (!config.hints) {
+    config.hints = { enabled: true, strategy: strategy as 'ai' | 'static', timeout: 2000 };
+  } else {
+    config.hints.strategy = strategy as 'ai' | 'static';
+  }
+
+  await saveConfig(storagePath, config);
+  success(`Hints strategy set to: ${strategy}`);
+}
+
+/**
+ * Show hints status
+ */
+export async function hintsStatusCommand(): Promise<void> {
+  const storagePath = await getStoragePath();
+
+  try {
+    const config = await loadConfig(storagePath);
+    const hints = config.hints || { enabled: true, strategy: 'ai', timeout: 2000 };
+
+    console.log('\nHints configuration:');
+    console.log(`  Enabled: ${hints.enabled ? 'yes' : 'no'}`);
+    console.log(`  Strategy: ${hints.strategy}`);
+    console.log(`  Timeout: ${hints.timeout}ms`);
+  } catch {
+    warn('No configuration found');
+  }
+}
+
+// Register hints subcommands
+const hintsCommand = configCommand
+  .command('hints')
+  .description('Manage hints configuration');
+
+hintsCommand
+  .command('enable')
+  .description('Enable contextual hints after commands')
+  .action(async () => {
+    try {
+      await hintsEnableCommand();
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+hintsCommand
+  .command('disable')
+  .description('Disable contextual hints')
+  .action(async () => {
+    try {
+      await hintsDisableCommand();
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+hintsCommand
+  .command('strategy <type>')
+  .description('Set hints strategy (ai or static)')
+  .action(async (type: string) => {
+    try {
+      await hintsStrategyCommand(type);
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// Default action shows status
+hintsCommand.action(async () => {
+  try {
+    await hintsStatusCommand();
+  } catch (error) {
+    handleError(error);
+  }
+});
+
 export { configCommand };

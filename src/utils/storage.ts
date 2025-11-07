@@ -13,6 +13,13 @@ export const ConfigSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({ enabled: true }),
+  hints: z
+    .object({
+      enabled: z.boolean().default(true),
+      strategy: z.enum(['ai', 'static']).default('ai'),
+      timeout: z.number().positive().default(2000),
+    })
+    .default({ enabled: true, strategy: 'ai', timeout: 2000 }),
   readPaths: z.array(z.string()).optional().default([]),
 });
 
@@ -143,6 +150,11 @@ export async function initializeStorage(basePath: string): Promise<void> {
       lastModified: now,
       animations: {
         enabled: true,
+      },
+      hints: {
+        enabled: true,
+        strategy: 'ai',
+        timeout: 2000,
       },
       readPaths: [],
     };

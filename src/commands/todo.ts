@@ -21,6 +21,7 @@ import { parseNaturalDate } from '../utils/date-parser.js';
 import { success, error, info } from '../utils/cli.js';
 import { linkToGoal } from '../utils/goal-matcher.js';
 import { playCompletionAnimation } from '../utils/animations.js';
+import { showHint } from '../utils/hints.js';
 
 const todoCommand = new Command('todo');
 
@@ -85,6 +86,9 @@ todoCommand
         }
         success(`Todo added: "${text}"`);
       }
+
+      // Show contextual hint
+      await showHint({ command: 'todo.add', metadata: { text, priority } });
     } catch (err) {
       error(`Failed to add todo: ${(err as Error).message}`);
       throw err;
@@ -217,6 +221,9 @@ todoCommand
       if (updatedTodo.goal) {
         info(`Linked to goal: ${updatedTodo.goal}`);
       }
+
+      // Show contextual hint
+      await showHint({ command: 'todo.done', metadata: { text: updatedTodo.text } });
     } catch (err) {
       error(`Failed to complete todo: ${(err as Error).message}`);
       throw err;
