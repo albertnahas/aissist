@@ -62,9 +62,7 @@ export async function showHint(context: HintContext): Promise<void> {
     if (hint) {
       displayHint(hint);
     }
-  } catch (error) {
+  } catch {
     // Silently fail if hint generation fails - don't disrupt user workflow
-    // In development, you might want to log this
-    // console.error('Hint generation failed:', (error as Error).message);
   }
 }
