@@ -12,6 +12,7 @@ import {
   appendToMarkdown,
   readMarkdown,
   getActiveGoals,
+  getGoalByCodename,
   ConfigSchema,
   type Config,
 } from './storage';
@@ -340,6 +341,83 @@ Afternoon task`;
       expect(result).toHaveLength(2);
       expect(result[0].codename).toBe('morning-goal');
       expect(result[1].codename).toBe('afternoon-goal');
+    });
+  });
+
+  describe('getGoalByCodename', () => {
+    it('should find goal by codename', async () => {
+      const goalsDir = join(testDir, 'goals');
+      await mkdir(goalsDir);
+
+      const goalContent = `## 10:00 - test-goal
+
+Test goal text
+
+> A test goal for unit testing
+
+Deadline: 2025-12-31`;
+
+      await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+      const result = await getGoalByCodename(testDir, 'test-goal');
+      expect(result).not.toBeNull();
+      expect(result?.codename).toBe('test-goal');
+      expect(result?.text).toBe('Test goal text');
+      expect(result?.description).toBe('A test goal for unit testing');
+      expect(result?.deadline).toBe('2025-12-31');
+    });
+
+    it('should return null if goal not found', async () => {
+      const goalsDir = join(testDir, 'goals');
+      await mkdir(goalsDir);
+
+      const goalContent = `## 10:00 - other-goal
+
+Other goal`;
+
+      await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+      const result = await getGoalByCodename(testDir, 'nonexistent-goal');
+      expect(result).toBeNull();
+    });
+
+    it('should find goal across multiple files', async () => {
+      const goalsDir = join(testDir, 'goals');
+      await mkdir(goalsDir);
+
+      const goal1 = `## 10:00 - goal-one
+
+Goal one text`;
+
+      const goal2 = `## 14:00 - goal-two
+
+Goal two text`;
+
+      await writeFile(join(goalsDir, '2025-11-01.md'), goal1);
+      await writeFile(join(goalsDir, '2025-11-04.md'), goal2);
+
+      const result = await getGoalByCodename(testDir, 'goal-two');
+      expect(result).not.toBeNull();
+      expect(result?.codename).toBe('goal-two');
+      expect(result?.text).toBe('Goal two text');
+    });
+
+    it('should handle goal without deadline or description', async () => {
+      const goalsDir = join(testDir, 'goals');
+      await mkdir(goalsDir);
+
+      const goalContent = `## 10:00 - simple-goal
+
+Simple goal text`;
+
+      await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+      const result = await getGoalByCodename(testDir, 'simple-goal');
+      expect(result).not.toBeNull();
+      expect(result?.codename).toBe('simple-goal');
+      expect(result?.text).toBe('Simple goal text');
+      expect(result?.description).toBeNull();
+      expect(result?.deadline).toBeNull();
     });
   });
 });

@@ -6,24 +6,70 @@ export interface ProposalPromptOptions {
   data: ProposalData;
   storagePath: string;
   tag?: string;
+  goalInfo?: {
+    codename: string;
+    text: string;
+    description: string | null;
+    deadline: string | null;
+  };
 }
 
 /**
  * Build a comprehensive prompt for Claude Code to generate actionable proposals
  */
 export function buildProposalPrompt(options: ProposalPromptOptions): string {
-  const { timeframe, data, storagePath, tag } = options;
+  const { timeframe, data, storagePath, tag, goalInfo } = options;
 
   const sections: string[] = [];
 
   // Detect "now" mode for immediate action
   const isNowMode = timeframe.label === 'Right Now';
 
+  // Detect timeframe mode for goal-focused planning
+  const isTimelessMode = timeframe.label === 'Comprehensive Plan';
+  const isDeadlineMode = goalInfo?.deadline && timeframe.label.startsWith('Now until');
+
   // Header section
   sections.push(`# Generate Actionable Proposals for ${timeframe.label}`);
   sections.push('');
   sections.push('You are an AI planning assistant helping the user plan their actions based on their goals, history, and reflections.');
   sections.push('');
+
+  // Goal Focus section (if goal is specified)
+  if (goalInfo) {
+    sections.push('## Goal Focus');
+    sections.push('');
+    sections.push(`**The user wants proposals specifically focused on advancing this goal:**`);
+    sections.push('');
+    sections.push(`- **Goal**: ${goalInfo.text} (${goalInfo.codename})`);
+    if (goalInfo.description) {
+      sections.push(`- **Description**: ${goalInfo.description}`);
+    }
+    if (goalInfo.deadline) {
+      sections.push(`- **Deadline**: ${goalInfo.deadline}`);
+    }
+    sections.push('');
+
+    if (isTimelessMode) {
+      sections.push('**Important**: This goal has no deadline. Generate a comprehensive, strategic plan that focuses on:');
+      sections.push('- Breaking the goal into logical milestones and phases');
+      sections.push('- Identifying dependencies and prerequisites');
+      sections.push('- Creating a roadmap regardless of time constraints');
+      sections.push('- Prioritizing based on logical sequence, not urgency');
+    } else if (isDeadlineMode) {
+      sections.push('**Important**: This proposal should work backward from the goal deadline. Focus on:');
+      sections.push('- What needs to be accomplished by the deadline');
+      sections.push('- Critical path items and dependencies');
+      sections.push('- Time-sensitive milestones within the timeframe');
+      sections.push('- Realistic pacing to meet the deadline');
+    } else {
+      sections.push('**Important**: Prioritize proposals that directly advance this specific goal within the given timeframe.');
+      sections.push('- All proposals should clearly contribute to achieving this goal');
+      sections.push('- Consider both immediate actions and longer-term steps');
+      sections.push('- Reference the goal context when explaining your recommendations');
+    }
+    sections.push('');
+  }
 
   // Context section
   sections.push('## Context');

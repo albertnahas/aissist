@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { parseTimeframe } from './timeframe-parser';
+import { parseTimeframe, createTimeframeToDeadline, createTimelessTimeframe } from './timeframe-parser';
 import { addDays } from 'date-fns';
 
 describe('timeframe parser', () => {
@@ -150,6 +150,79 @@ describe('timeframe parser', () => {
         expect(message).toContain('this week');
         expect(message).toContain('this quarter');
       }
+    });
+  });
+
+  describe('createTimeframeToDeadline', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it('should create timeframe from now to deadline', () => {
+      const testDate = new Date('2025-11-06T14:30:00');
+      vi.setSystemTime(testDate);
+
+      const result = createTimeframeToDeadline('2025-12-31');
+
+      expect(result.start).toEqual(testDate);
+      expect(result.end.getFullYear()).toBe(2025);
+      expect(result.end.getMonth()).toBe(11); // December
+      expect(result.end.getDate()).toBe(31);
+      expect(result.label).toContain('Now until');
+      expect(result.label).toContain('December 31, 2025');
+    });
+
+    it('should throw error for invalid deadline', () => {
+      vi.setSystemTime(new Date('2025-11-06T14:30:00'));
+
+      expect(() => createTimeframeToDeadline('invalid-date')).toThrow('Invalid deadline date');
+    });
+
+    it('should handle past deadlines', () => {
+      vi.setSystemTime(new Date('2025-11-06T14:30:00'));
+
+      const result = createTimeframeToDeadline('2025-01-01');
+
+      expect(result.start.getTime()).toBeGreaterThan(result.end.getTime());
+      expect(result.label).toContain('Now until');
+      expect(result.label).toContain('January 1, 2025');
+    });
+
+    it('should handle same-day deadlines', () => {
+      vi.setSystemTime(new Date('2025-11-06T10:00:00'));
+
+      const result = createTimeframeToDeadline('2025-11-06');
+
+      expect(result.start.getDate()).toBe(result.end.getDate());
+      expect(result.label).toContain('November 6, 2025');
+    });
+  });
+
+  describe('createTimelessTimeframe', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it('should create timeless timeframe', () => {
+      const testDate = new Date('2025-11-06T14:30:00');
+      vi.setSystemTime(testDate);
+
+      const result = createTimelessTimeframe();
+
+      expect(result.start).toEqual(testDate);
+      expect(result.end.getFullYear()).toBe(2026); // One year in future
+      expect(result.label).toBe('Comprehensive Plan');
+    });
+
+    it('should create far future end date', () => {
+      vi.setSystemTime(new Date('2025-11-06T14:30:00'));
+
+      const result = createTimelessTimeframe();
+
+      const oneYearLater = new Date('2026-11-06');
+      expect(result.end.getFullYear()).toBe(oneYearLater.getFullYear());
+      expect(result.end.getMonth()).toBe(oneYearLater.getMonth());
+      expect(result.end.getDate()).toBe(oneYearLater.getDate());
     });
   });
 });

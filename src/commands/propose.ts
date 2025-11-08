@@ -3,9 +3,9 @@ import { join } from 'path';
 import { input, select, checkbox } from '@inquirer/prompts';
 import ora from 'ora';
 import chalk from 'chalk';
-import { getStoragePath, appendToMarkdown } from '../utils/storage.js';
+import { getStoragePath, appendToMarkdown, getGoalByCodename } from '../utils/storage.js';
 import { getCurrentDate, getCurrentTime } from '../utils/date.js';
-import { parseTimeframe } from '../utils/timeframe-parser.js';
+import { parseTimeframe, createTimeframeToDeadline, createTimelessTimeframe } from '../utils/timeframe-parser.js';
 import { loadProposalData, hasData, getDataSummary } from '../utils/data-aggregator.js';
 import { buildProposalPrompt } from '../prompts/proposal-prompt.js';
 import { checkClaudeCodeSession, executeClaudeCodeWithTools } from '../llm/claude.js';
@@ -17,12 +17,12 @@ const proposeCommand = new Command('propose');
 
 proposeCommand
   .description('Generate AI-powered action proposals based on your goals and history')
-  .argument('[timeframe]', 'Timeframe for proposals (e.g., "today", "this week", "next quarter", "2026 Q1")', 'today')
+  .argument('[timeframe]', 'Timeframe for proposals (e.g., "today", "this week", "next quarter", "2026 Q1"). When --goal is used without explicit timeframe, automatically uses goal deadline or timeless planning.', 'today')
   .option('--reflect', 'Prompt for a quick reflection before generating proposals')
   .option('--debug', 'Display debug information (prompt, data summary)')
   .option('--context', 'Include context files in the analysis')
   .option('--tag <tag>', 'Filter by specific tag (e.g., "work", "fitness")')
-  .option('-g, --goal [keyword]', 'Link proposals to a goal (optional keyword for matching)')
+  .option('-g, --goal [keyword]', 'Focus proposals on a specific goal (optional keyword for matching). Without explicit timeframe, uses goal deadline or comprehensive planning.')
   .option('--raw', 'Output raw Markdown (for piping or AI consumption)')
   .action(async (timeframe: string, options) => {
     try {
@@ -85,6 +85,52 @@ proposeCommand
         return;
       }
 
+      // Handle goal linking if --goal flag is present
+      const goalLinkResult = await linkToGoal({
+        goalKeyword: options.goal,
+        storagePath,
+      });
+
+      // Load full goal details and apply smart timeframe if goal is specified
+      let goalInfo: { codename: string; text: string; description: string | null; deadline: string | null } | undefined;
+      const isGoalOnlyInvocation = options.goal && timeframe === 'today';
+
+      if (goalLinkResult.codename) {
+        const goal = await getGoalByCodename(storagePath, goalLinkResult.codename);
+
+        if (goal) {
+          goalInfo = {
+            codename: goal.codename,
+            text: goal.text,
+            description: goal.description,
+            deadline: goal.deadline,
+          };
+
+          // Smart timeframe: if user didn't explicitly provide timeframe, use goal's timeframe
+          if (isGoalOnlyInvocation) {
+            if (goal.deadline) {
+              // Goal has deadline: calculate "now until deadline" timeframe
+              try {
+                parsedTimeframe = createTimeframeToDeadline(goal.deadline);
+                info(`Using goal deadline: ${parsedTimeframe.label}`);
+              } catch (err) {
+                warn(`Invalid goal deadline, using default timeframe: ${(err as Error).message}`);
+              }
+            } else {
+              // Goal has no deadline: use timeless planning mode
+              parsedTimeframe = createTimelessTimeframe();
+              info(`No deadline set - using comprehensive planning mode`);
+            }
+          }
+
+          info(`Proposals focused on goal: ${goalLinkResult.codename}`);
+        } else {
+          warn(`Goal "${goalLinkResult.codename}" not found, proceeding without goal focus`);
+        }
+      } else if (options.goal && goalLinkResult.message !== 'No goal linking requested') {
+        info(goalLinkResult.message);
+      }
+
       // Debug mode: show data summary
       if (options.debug) {
         console.log(chalk.cyan('\n=== Debug Information ==='));
@@ -93,15 +139,19 @@ proposeCommand
         if (options.tag) {
           console.log(chalk.dim(`Tag filter: #${options.tag}`));
         }
+        if (goalInfo) {
+          console.log(chalk.dim(`Goal: ${goalInfo.codename} - ${goalInfo.text}`));
+        }
         console.log();
       }
 
-      // Build prompt
+      // Build prompt (now with optional goal info)
       const prompt = buildProposalPrompt({
         timeframe: parsedTimeframe,
         data,
         storagePath,
         tag: options.tag,
+        goalInfo,
       });
 
       // Debug mode: show raw prompt
@@ -109,18 +159,6 @@ proposeCommand
         console.log(chalk.cyan('=== Prompt for Claude ==='));
         console.log(chalk.dim(prompt));
         console.log(chalk.cyan('========================\n'));
-      }
-
-      // Handle goal linking if --goal flag is present
-      const goalLinkResult = await linkToGoal({
-        goalKeyword: options.goal,
-        storagePath,
-      });
-
-      if (goalLinkResult.codename) {
-        info(`Proposals will be linked to goal: ${goalLinkResult.codename}`);
-      } else if (options.goal && goalLinkResult.message !== 'No goal linking requested') {
-        info(goalLinkResult.message);
       }
 
       // Generate proposals with Claude Code

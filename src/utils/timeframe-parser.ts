@@ -189,3 +189,46 @@ function getMonthIndex(monthName: string): number {
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
+
+/**
+ * Create a timeframe from now until a specific deadline date
+ * @param deadline - Deadline date in YYYY-MM-DD format
+ * @returns TimeframeResult spanning now to deadline
+ */
+export function createTimeframeToDeadline(deadline: string): TimeframeResult {
+  const now = new Date();
+  const deadlineDate = parseISO(deadline);
+
+  if (!isValid(deadlineDate)) {
+    throw new Error(`Invalid deadline date: ${deadline}`);
+  }
+
+  // Format deadline for display (e.g., "December 31, 2025")
+  const deadlineDisplay = deadlineDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  return {
+    start: now,
+    end: endOfDay(deadlineDate),
+    label: `Now until ${deadlineDisplay}`
+  };
+}
+
+/**
+ * Create a timeless timeframe for goals without deadlines
+ * @returns TimeframeResult with no specific time bounds
+ */
+export function createTimelessTimeframe(): TimeframeResult {
+  const now = new Date();
+  // Set a far future date (1 year from now) as a practical bound
+  const farFuture = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+
+  return {
+    start: now,
+    end: farFuture,
+    label: 'Comprehensive Plan'
+  };
+}

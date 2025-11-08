@@ -325,18 +325,20 @@ Generate AI-powered action proposals based on your goals, history, and reflectio
 **Arguments:**
 - `[timeframe]` - Timeframe for proposals (default: "today")
   - Examples: "today", "this week", "next quarter", "2026 Q1"
+  - When using `--goal` without explicit timeframe, automatically uses goal deadline or comprehensive planning
 
 **Options:**
 - `--reflect` - Prompt for a quick reflection before generating proposals
 - `--debug` - Display debug information (prompt, data summary)
 - `--context` - Include context files in the analysis
 - `--tag <tag>` - Filter by specific tag (e.g., "work", "fitness")
-- `-g, --goal [keyword]` - Link proposals to a goal (optional keyword for matching)
+- `-g, --goal [keyword]` - Focus proposals on a specific goal (optional keyword for matching). Without explicit timeframe, uses goal deadline or comprehensive planning.
 - `--raw` - Output raw Markdown without terminal formatting (for piping or AI consumption)
 
 **How it works:**
 - Analyzes your goals, history, todos, and reflections from the past 30 days
 - Uses Claude Code to generate contextual action proposals
+- When `--goal` is used without timeframe: automatically plans based on goal deadline or uses comprehensive strategic planning
 - Offers to save proposals as todos, goals, or markdown
 - Output is beautifully formatted for terminal viewing by default
 
@@ -350,14 +352,17 @@ aissist propose "this week"
 aissist propose "next quarter"
 aissist propose "2026 Q1"
 
+# Goal-focused proposals with smart timeframe
+aissist propose --goal "launch-mvp"  # Uses goal deadline or comprehensive planning
+
+# Goal-focused proposals for specific timeframe
+aissist propose "this week" --goal "launch-mvp"  # Combine explicit timeframe + goal focus
+
 # Include a quick reflection before proposing
 aissist propose --reflect
 
 # Filter by tag
 aissist propose --tag work
-
-# Link proposals to a specific goal
-aissist propose --goal "launch-mvp"
 
 # Raw output for AI agents or piping
 aissist propose --raw > proposals.md

@@ -464,7 +464,7 @@ aissist propose [options] [timeframe]
 ```
 
 **Options:**
-- `--goal <codename>` - Propose actions for specific goal
+- `-g, --goal [keyword]` - Focus proposals on specific goal (optional keyword for matching). When used without explicit timeframe, automatically uses goal deadline or comprehensive planning.
 - `--reflect` - Prompt for a quick reflection before generating proposals
 - `--tag <tag>` - Filter by specific tag
 - `--context` - Include context files in the analysis
@@ -476,9 +476,17 @@ aissist propose [options] [timeframe]
 aissist propose now  # Get exactly 1 immediate action (1-2 hours)
 aissist propose  # Propose based on all data
 aissist propose "this week"  # Proposals for the week
-aissist propose --goal learn-typescript-fundamentals  # Goal-specific proposals
+aissist propose --goal learn-typescript  # Goal-focused with smart timeframe (uses goal deadline)
+aissist propose "this week" --goal learn-typescript  # Goal-focused for specific timeframe
 aissist propose "next quarter" --tag work  # Tagged proposals
 ```
+
+**Goal-Focused Planning:**
+
+When using `--goal` without an explicit timeframe:
+- **If goal has deadline:** Plans from now until the deadline (e.g., "Now until December 31, 2025")
+- **If goal has no deadline:** Uses comprehensive strategic planning (milestone-based, no time pressure)
+- **With explicit timeframe:** Combines timeframe + goal focus (e.g., `propose "this week" --goal X`)
 
 **Timeframe Options:**
 

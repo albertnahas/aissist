@@ -543,6 +543,17 @@ export async function getActiveGoals(storagePath: string): Promise<ActiveGoal[]>
 }
 
 /**
+ * Get a specific goal by codename across all storage paths
+ * @param storagePath - Path to storage directory
+ * @param codename - Goal codename to search for
+ * @returns Goal details or null if not found
+ */
+export async function getGoalByCodename(storagePath: string, codename: string): Promise<ActiveGoal | null> {
+  const activeGoals = await getActiveGoals(storagePath);
+  return activeGoals.find(g => g.codename === codename) || null;
+}
+
+/**
  * History entry interface for getAllHistory
  */
 export interface HistoryEntry {
