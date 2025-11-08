@@ -6,29 +6,25 @@ TBD - created by archiving change beautify-markdown-output. Update Purpose after
 ### Requirement: Terminal Markdown Rendering
 The system SHALL render Markdown output with visual enhancements in the terminal.
 
-#### Scenario: Render headings with visual distinction
-- **WHEN** Markdown contains headings (##, ###, etc.)
-- **THEN** they are rendered with bold, colored text and proper spacing
+#### Scenario: Render bold text in numbered lists
+- **WHEN** Markdown contains numbered lists with bold text (e.g., `1. **bold item**`)
+- **THEN** the bold markers are removed and text is rendered with terminal bold styling
 
-#### Scenario: Render lists with indentation
-- **WHEN** Markdown contains bullet or numbered lists
-- **THEN** they are rendered with proper indentation and list markers
+#### Scenario: Render bold text in bullet lists
+- **WHEN** Markdown contains bullet lists with bold text (e.g., `- **bold item**`)
+- **THEN** the bold markers are removed and text is rendered with terminal bold styling
 
-#### Scenario: Render code blocks with syntax highlighting
-- **WHEN** Markdown contains fenced code blocks
-- **THEN** they are rendered with syntax highlighting and distinct background
+#### Scenario: Render italic text in lists
+- **WHEN** Markdown contains lists with italic text (e.g., `1. *italic item*`)
+- **THEN** the italic markers are removed and text is rendered with terminal dim/italic styling
 
-#### Scenario: Render emphasis and strong emphasis
-- **WHEN** Markdown contains *italic* or **bold** text
-- **THEN** they are rendered with terminal styling (dim/bold)
+#### Scenario: Render mixed formatting in lists
+- **WHEN** Markdown contains lists with multiple inline formats (e.g., `1. **bold** and *italic* text`)
+- **THEN** all formatting markers are properly processed and styled appropriately
 
-#### Scenario: Render links
-- **WHEN** Markdown contains [links](url)
-- **THEN** they are rendered with underline and color, showing URL in dim text
-
-#### Scenario: Respect terminal capabilities
-- **WHEN** rendering in a terminal without color support
-- **THEN** markdown renders gracefully with ASCII-only styling
+#### Scenario: Maintain existing non-list rendering
+- **WHEN** Markdown contains bold/italic in paragraphs, headings, or other contexts
+- **THEN** rendering continues to work as it does currently (no regression)
 
 ### Requirement: Raw Output Mode
 The system SHALL provide raw Markdown output for machine consumption.

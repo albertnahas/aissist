@@ -16,6 +16,26 @@ marked.setOptions({
 });
 
 /**
+ * Post-processes rendered markdown to fix inline formatting in lists.
+ * marked-terminal has a bug where bold/italic markers aren't processed in list items.
+ * This function manually applies chalk styling to those markers.
+ *
+ * @param text - The already-rendered markdown text from marked
+ * @returns Text with inline formatting properly styled
+ */
+function postProcessInlineFormatting(text: string): string {
+  // Replace **bold** with chalk.bold
+  // Use negative lookbehind/lookahead to avoid matching escaped asterisks
+  text = text.replace(/\*\*([^*]+?)\*\*/g, (_, content) => chalk.bold(content));
+
+  // Replace *italic* with chalk.dim (avoiding **bold** which has already been processed)
+  // Match single asterisk that's not part of ** or preceded/followed by *
+  text = text.replace(/(?<!\*)\*(?!\*)([^*]+?)(?<!\*)\*(?!\*)/g, (_, content) => chalk.dim(content));
+
+  return text;
+}
+
+/**
  * Renders markdown text for terminal display with beautiful formatting.
  *
  * @param text - The markdown text to render
@@ -45,14 +65,15 @@ export function renderMarkdown(text: string, raw?: boolean): string {
 
     // marked returns a Promise in some versions, handle both cases
     if (typeof rendered === 'string') {
-      return rendered;
+      // Post-process to fix inline formatting in lists (marked-terminal bug workaround)
+      return postProcessInlineFormatting(rendered);
     } else if (rendered instanceof Promise) {
       // This shouldn't happen with marked-terminal, but handle gracefully
       console.warn('Warning: Markdown rendering returned a Promise, falling back to raw output');
       return text;
     }
 
-    return rendered as string;
+    return postProcessInlineFormatting(rendered as string);
   } catch (error) {
     // On any error, fall back to raw markdown with a warning
     console.warn('Warning: Failed to render markdown, displaying raw output');

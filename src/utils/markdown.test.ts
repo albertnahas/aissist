@@ -131,6 +131,98 @@ const code = 'example';
 
     console.warn = originalConsoleWarn;
   });
+
+  // Tests for list formatting fix (marked-terminal bug workaround)
+  it('should render bold text in numbered lists without raw ** markers', () => {
+    const markdown = '1. **Bold item in list**\n2. Normal item';
+    const result = renderMarkdown(markdown);
+
+    // Should contain the text content
+    expect(result).toContain('Bold item in list');
+    expect(result).toContain('Normal item');
+
+    // Should NOT contain raw ** markers
+    expect(result).not.toContain('**Bold item in list**');
+    expect(result).not.toContain('**');
+  });
+
+  it('should render bold text in bullet lists without raw ** markers', () => {
+    const markdown = '- **Bold bullet item**\n- Normal bullet';
+    const result = renderMarkdown(markdown);
+
+    // Should contain the text content
+    expect(result).toContain('Bold bullet item');
+    expect(result).toContain('Normal bullet');
+
+    // Should NOT contain raw ** markers
+    expect(result).not.toContain('**Bold bullet item**');
+    expect(result).not.toContain('**');
+  });
+
+  it('should render italic text in lists without raw * markers', () => {
+    const markdown = '1. *Italic item*\n2. Normal item';
+    const result = renderMarkdown(markdown);
+
+    // Should contain the text content
+    expect(result).toContain('Italic item');
+    expect(result).toContain('Normal item');
+
+    // Should NOT contain the exact pattern *Italic item*
+    expect(result).not.toContain('*Italic item*');
+  });
+
+  it('should render mixed bold and italic in lists', () => {
+    const markdown = '1. **Bold** and *italic* text\n2. Normal item';
+    const result = renderMarkdown(markdown);
+
+    // Should contain the text content
+    expect(result).toContain('Bold');
+    expect(result).toContain('italic');
+    expect(result).toContain('text');
+
+    // Should NOT contain raw markers
+    expect(result).not.toContain('**Bold**');
+    expect(result).not.toContain('*italic*');
+  });
+
+  it('should maintain paragraph bold/italic rendering (no regression)', () => {
+    const markdown = 'This is **bold** and *italic* in a paragraph.';
+    const result = renderMarkdown(markdown);
+
+    // Should contain the text content
+    expect(result).toContain('bold');
+    expect(result).toContain('italic');
+
+    // Should NOT contain raw markers
+    expect(result).not.toContain('**bold**');
+    expect(result).not.toContain('*italic*');
+  });
+
+  it('should handle complex list with multiple formatting', () => {
+    const markdown = `1. **First item** with *emphasis*
+2. **Second** item
+3. Normal item
+
+- **Bullet bold**
+- *Bullet italic*
+- Normal bullet`;
+
+    const result = renderMarkdown(markdown);
+
+    // Should contain all text
+    expect(result).toContain('First item');
+    expect(result).toContain('emphasis');
+    expect(result).toContain('Second');
+    expect(result).toContain('Bullet bold');
+    expect(result).toContain('Bullet italic');
+
+    // Should NOT contain raw markers
+    expect(result).not.toContain('**First item**');
+    expect(result).not.toContain('*emphasis*');
+    expect(result).not.toContain('**Second**');
+    expect(result).not.toContain('**Bullet bold**');
+    expect(result).not.toContain('*Bullet italic*');
+  });
 });
 
 describe('supportsColor', () => {
