@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'fs/promises';
 import { join, relative } from 'path';
+import { needsMigration, parseContextItemEntries, serializeContextItemEntryYaml, writeFileAtomic } from './storage.js';
 
 export interface SearchMatch {
   filePath: string;
@@ -40,7 +41,22 @@ export async function searchMarkdownFiles(
 
           await searchDirectory(fullPath, newContextType);
         } else if (entry.name.endsWith('.md')) {
-          const content = await readFile(fullPath, 'utf-8');
+          let content = await readFile(fullPath, 'utf-8');
+
+          // Auto-migrate context files if needed
+          if (contextType === 'context' && needsMigration(content)) {
+            try {
+              const inlineEntries = parseContextItemEntries(content);
+              const yamlEntries = inlineEntries.map(serializeContextItemEntryYaml);
+              const migratedContent = yamlEntries.join('\n\n');
+              await writeFileAtomic(fullPath, migratedContent);
+              content = migratedContent;
+            } catch (error) {
+              // If migration fails, continue with original content
+              console.warn(`Failed to migrate ${fullPath}:`, error);
+            }
+          }
+
           const lines = content.split('\n');
 
           // Extract date from filename (YYYY-MM-DD.md)

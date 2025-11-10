@@ -4,6 +4,8 @@ import {
   getStoragePath,
   appendToMarkdown,
   getExistingCodenames,
+  serializeGoalEntryYaml,
+  type GoalEntry,
 } from './storage.js';
 import { getCurrentDate, getCurrentTime, parseDate, formatDate } from './date.js';
 import { success, error, info, withSpinner } from './cli.js';
@@ -95,19 +97,17 @@ export async function createGoalInteractive(options: GoalCreationOptions = {}): 
       }
     }
 
-    // Build goal entry
-    let entry = `## ${time} - ${codename}\n\n${goalText}`;
+    // Build goal entry using YAML format
+    const goalEntry: GoalEntry = {
+      timestamp: time,
+      codename,
+      text: goalText,
+      description: options.description || null,
+      deadline: deadlineDate || null,
+      rawEntry: '', // Will be set by serializer
+    };
 
-    // Add description if provided
-    if (options.description) {
-      const descriptionLines = options.description.split('\n').map((line: string) => `> ${line}`).join('\n');
-      entry += `\n\n${descriptionLines}`;
-    }
-
-    if (deadlineDate) {
-      entry += `\n\nDeadline: ${deadlineDate}`;
-    }
-
+    const entry = serializeGoalEntryYaml(goalEntry);
     await appendToMarkdown(filePath, entry);
 
     success(`Goal added with codename: ${chalk.cyan(codename)}`);

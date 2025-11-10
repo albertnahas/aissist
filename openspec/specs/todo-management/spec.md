@@ -134,22 +134,51 @@ The system SHALL allow users to edit todo text while preserving completion statu
 - **AND** updates the todo
 
 ### Requirement: Todo File Format
-The system SHALL store todos in standard Markdown checkbox format with optional metadata.
+The system SHALL store todos in structured Markdown format with YAML front matter including schema version for metadata and checkbox format for content.
 
-#### Scenario: Format incomplete todo
-- **WHEN** a todo is added
-- **THEN** it follows the format: `## HH:MM\n\n- [ ] Todo text`
-- **AND** if linked to a goal: `- [ ] Todo text (Goal: goal-codename)`
+**Changes**: Added mandatory `schema_version` field to YAML front matter for format versioning and future evolution.
 
-#### Scenario: Format completed todo
-- **WHEN** a todo is marked complete
-- **THEN** the checkbox is updated: `- [x] Todo text`
-- **AND** goal metadata is preserved
+#### Scenario: YAML front matter includes schema version
+- **WHEN** a todo is added or updated
+- **THEN** the YAML front matter includes `schema_version: "1.0"` as the first field
+- **AND** the schema version is a string in "MAJOR.MINOR" format
+- **AND** the current schema version is "1.0"
 
-#### Scenario: Parse todo entries
-- **WHEN** reading a todo file
-- **THEN** the system extracts checkbox status, text, timestamp, and goal metadata
-- **AND** makes them available for filtering and operations
+#### Scenario: Example todo entry with schema version
+- **WHEN** a todo is stored
+- **THEN** it follows this format:
+```markdown
+---
+schema_version: "1.0"
+timestamp: "09:15"
+completed: false
+priority: 3
+goal: code-quality
+---
+
+- [ ] Review code changes
+```
+
+#### Scenario: Parse todo with schema version
+- **WHEN** reading a todo entry with YAML front matter
+- **THEN** the system extracts the `schema_version` field
+- **AND** validates it against known versions ("1.0")
+- **AND** uses the version to determine parsing behavior
+- **AND** constructs a TodoEntry object with all fields populated
+
+#### Scenario: Parse todo without schema version (backward compatibility)
+- **WHEN** reading a todo entry without `schema_version` field
+- **THEN** the system defaults to schema version "1.0"
+- **AND** parses the entry using v1.0 format
+- **AND** does NOT log any warnings or errors
+- **AND** the entry works identically to versioned entries
+
+#### Scenario: Handle unknown schema version for todos
+- **WHEN** reading a todo entry with an unknown schema version
+- **THEN** the system logs a warning message indicating the unknown version
+- **AND** falls back to parsing as schema version "1.0"
+- **AND** continues processing without failing
+- **AND** the todo entry is still usable
 
 ### Requirement: History Logging on Completion
 The system SHALL automatically log completed todos to history with full context.
@@ -282,4 +311,60 @@ The system SHALL parse natural language date expressions for the `--date` flag u
 - **WHEN** neither natural language nor ISO format parsing succeeds
 - **THEN** the system displays: "Invalid date format: [input]"
 - **AND** suggests: "Use YYYY-MM-DD format or natural language like 'today', 'yesterday', 'this week'"
+
+### Requirement: Parse todo entries
+The system SHALL extract metadata including schema version from YAML front matter and checkbox content from markdown body.
+
+**Changes**: Updated to extract and validate `schema_version` field during parsing.
+
+#### Scenario: Extract schema version from todo YAML
+- **WHEN** reading a todo file with YAML front matter
+- **THEN** the system parses `schema_version` as the first field
+- **AND** normalizes missing version to "1.0"
+- **AND** validates against known versions
+- **AND** logs warning if unknown
+- **AND** proceeds with parsing other metadata fields
+
+### Requirement: YAML Serialization for Todos
+The system SHALL serialize todo metadata to YAML front matter format when creating or updating todos.
+
+#### Scenario: Serialize new todo to YAML
+- **WHEN** a new todo is created
+- **THEN** the system constructs YAML front matter with all metadata fields
+- **AND** includes completed, priority, and goal fields
+- **AND** appends the checkbox markdown after the front matter delimiter
+- **AND** writes the complete entry to the todo file
+
+#### Scenario: Omit default values in YAML output
+- **WHEN** serializing a todo with priority 0 and no goal
+- **THEN** the YAML front matter omits priority (if 0) and goal (if null)
+- **AND** only includes non-default metadata
+- **AND** produces cleaner, more readable YAML
+
+#### Scenario: Update todo status in YAML
+- **WHEN** marking a todo as complete
+- **THEN** the system updates the `completed` field in YAML front matter
+- **AND** updates the checkbox in the markdown body (`- [x]`)
+- **AND** preserves all other metadata
+
+#### Scenario: Update todo priority in YAML
+- **WHEN** changing a todo's priority
+- **THEN** the system updates the `priority` field in YAML front matter
+- **AND** leaves the checkbox and text unchanged
+- **AND** preserves goal linkage
+
+### Requirement: Migration Logging for Todos
+The system SHALL log information about todo format migrations for user awareness and debugging.
+
+#### Scenario: Log successful todo migration
+- **WHEN** auto-migrating a todo file from inline to YAML format
+- **THEN** the system logs an info message indicating migration occurred
+- **AND** includes the file path and count of migrated entries
+- **AND** displays during verbose mode or debug logging
+
+#### Scenario: Log todo migration failures
+- **WHEN** auto-migration fails due to parse errors
+- **THEN** the system logs a warning message
+- **AND** indicates which entries could not be migrated
+- **AND** advises user to check file format manually
 

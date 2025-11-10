@@ -1,7 +1,14 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { readFile, readdir, access } from 'fs/promises';
-import { getStoragePath, appendToMarkdown, readMarkdown, ensureDirectory } from '../utils/storage.js';
+import {
+  getStoragePath,
+  appendToMarkdown,
+  readMarkdown,
+  ensureDirectory,
+  serializeContextItemEntryYaml,
+  type ContextItemEntry,
+} from '../utils/storage.js';
 import { getCurrentDate, getCurrentTime, parseDate, formatDate } from '../utils/date.js';
 import { success, error, info } from '../utils/cli.js';
 import { linkToGoal } from '../utils/goal-matcher.js';
@@ -73,13 +80,16 @@ contextCommand
         source = 'Text';
       }
 
-      let entry = `## ${time}\n\n**Source:** ${source}\n\n${content}`;
+      // Build context entry using YAML format
+      const contextEntry: ContextItemEntry = {
+        timestamp: time,
+        source,
+        text: content,
+        goal: goalLinkResult.codename || null,
+        rawEntry: '', // Will be set by serializer
+      };
 
-      // Add goal metadata if a goal was linked
-      if (goalLinkResult.codename) {
-        entry += `\n\nGoal: ${goalLinkResult.codename}`;
-      }
-
+      const entry = serializeContextItemEntryYaml(contextEntry);
       await appendToMarkdown(filePath, entry);
 
       if (goalLinkResult.codename) {

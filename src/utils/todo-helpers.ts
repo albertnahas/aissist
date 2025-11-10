@@ -3,6 +3,8 @@ import { input } from '@inquirer/prompts';
 import {
   getStoragePath,
   appendToMarkdown,
+  serializeTodoEntryYaml,
+  type TodoEntry,
 } from './storage.js';
 import { getCurrentDate, getCurrentTime, parseDate } from './date.js';
 import { success, error } from './cli.js';
@@ -104,16 +106,17 @@ export async function createTodoInteractive(options: TodoCreationOptions = {}): 
       // (User can link later via todo manage or --goal flag)
     }
 
-    // Build todo entry with priority and goal metadata
-    let metadata = '';
-    if (priority > 0) {
-      metadata += ` (Priority: ${priority})`;
-    }
-    if (goalCodename) {
-      metadata += ` (Goal: ${goalCodename})`;
-    }
-    const entry = `## ${time}\n\n- [ ] ${todoText}${metadata}`;
+    // Build todo entry using YAML format
+    const todoEntry: TodoEntry = {
+      timestamp: time,
+      text: todoText,
+      completed: false,
+      priority,
+      goal: goalCodename || null,
+      rawEntry: '', // Will be set by serializer
+    };
 
+    const entry = serializeTodoEntryYaml(todoEntry);
     await appendToMarkdown(filePath, entry);
 
     if (priority > 0 && goalCodename) {

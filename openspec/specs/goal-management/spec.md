@@ -29,21 +29,57 @@ The system SHALL allow users to add goals with auto-generated unique codenames a
 - **OR** generates a more specific codename to avoid conflicts
 
 ### Requirement: Goal File Format
-The system SHALL store goals in a structured Markdown format with codenames, timestamps, and optional metadata.
+The system SHALL store goals in structured Markdown format with YAML front matter for metadata including schema version.
 
-#### Scenario: Format goal entry with codename
-- **WHEN** a goal is added
-- **THEN** the entry includes:
-  - A timestamp (HH:MM format)
-  - A unique kebab-case codename
-  - The goal text
-  - Optional deadline field
-  - Markdown formatting for readability and parsing
+**Changes**: Added mandatory `schema_version` field to YAML front matter for format versioning and future evolution.
 
-#### Scenario: Example goal entry format
+#### Scenario: YAML front matter includes schema version
+- **WHEN** a goal is created or updated
+- **THEN** the YAML front matter includes `schema_version: "1.0"` as the first field
+- **AND** the schema version is a string in "MAJOR.MINOR" format
+- **AND** the current schema version is "1.0"
+
+#### Scenario: Example goal entry with schema version
 - **WHEN** a goal is stored
 - **THEN** it follows this format:
 ```markdown
+---
+schema_version: "1.0"
+timestamp: "14:30"
+codename: complete-project-proposal
+deadline: "2025-11-15"
+description: Detailed description of the proposal requirements
+---
+
+Complete the quarterly project proposal document
+```
+
+#### Scenario: Parse goal with schema version
+- **WHEN** reading a goal entry with YAML front matter
+- **THEN** the system extracts the `schema_version` field
+- **AND** validates it against known versions ("1.0")
+- **AND** uses the version to determine parsing behavior
+- **AND** constructs a GoalEntry object with all fields populated
+
+#### Scenario: Parse goal without schema version (backward compatibility)
+- **WHEN** reading a goal entry without `schema_version` field
+- **THEN** the system defaults to schema version "1.0"
+- **AND** parses the entry using v1.0 format
+- **AND** does NOT log any warnings or errors
+- **AND** the entry works identically to versioned entries
+
+#### Scenario: Handle unknown schema version
+- **WHEN** reading a goal entry with an unknown schema version (e.g., "2.0", "99.9")
+- **THEN** the system logs a warning message indicating the unknown version
+- **AND** falls back to parsing as schema version "1.0"
+- **AND** continues processing without failing
+- **AND** the goal entry is still usable
+
+#### Scenario: Schema version field ordering
+- **WHEN** serializing a goal to YAML format
+- **THEN** `schema_version` appears as the first field in the YAML front matter
+- **AND** followed by `timestamp`, `codename`, `deadline`, `description` in order
+- **AND** the ordering is consistent across all goal entries
 
 ### Requirement: Goal Visibility
 The system SHALL allow users to view their stored goals, defaulting to all active goals, with optional deadline-based filtering using natural language or ISO dates.
@@ -138,37 +174,39 @@ The system SHALL use Claude AI to generate meaningful, unique kebab-case codenam
 - **OR** appends a numeric suffix
 
 ### Requirement: Goal Parsing and Search
-The system SHALL parse goal entries to extract codenames and metadata for management operations.
+The system SHALL parse goal entries from YAML front matter to extract codenames and metadata for management operations.
 
-#### Scenario: Parse goal entry
-- **WHEN** reading a goal file
-- **THEN** the system extracts timestamp, codename, text, and deadline from each entry
+**Changes**: Updated to use YAML parser instead of regex-based inline parsing.
+
+#### Scenario: Parse goal entry with YAML
+- **WHEN** reading a goal file with YAML front matter
+- **THEN** the system uses `js-yaml` to parse the front matter block
+- **AND** extracts timestamp, codename, deadline, and description
 - **AND** makes them available for search and filtering
 
-#### Scenario: Find goal by codename
+#### Scenario: Find goal by codename (YAML format)
 - **WHEN** a command references a goal by codename
-- **THEN** the system searches today's goals file
+- **THEN** the system parses all entries from the YAML format
+- **AND** searches for matching codename
 - **AND** returns the matching goal entry
-- **OR** returns null if not found
-
-#### Scenario: Search across dates for codename
-- **WHEN** a goal is not found in today's file
-- **THEN** the system optionally searches recent goal files
-- **AND** informs the user of the goal's date if found elsewhere
 
 ### Requirement: Backward Compatibility
-The system SHALL handle existing goal entries without codenames gracefully.
+The system SHALL handle existing goal entries without YAML front matter gracefully through auto-migration.
 
-#### Scenario: Display legacy goals in list
+**Changes**: Enhanced backward compatibility with automatic migration on read.
+
+#### Scenario: Auto-migrate legacy goals on first read
 - **WHEN** listing goals from files created before this change
-- **THEN** the system displays goals without codenames
-- **AND** marks them as "[no-codename]" in interactive list
-- **AND** does not allow management actions on legacy goals
+- **THEN** the system detects inline format entries
+- **AND** automatically rewrites the file in YAML format
+- **AND** all subsequent operations use the new format
+- **AND** no manual migration is needed
 
-#### Scenario: Migrate legacy goal on interaction
-- **WHEN** the user attempts to manage a legacy goal
-- **THEN** the system offers to generate a codename for it
-- **AND** updates the goal entry with the codename if user accepts
+#### Scenario: Mixed format handling (during migration)
+- **WHEN** a file somehow contains both YAML and inline format entries
+- **THEN** the system parses both formats
+- **AND** migrates the entire file to YAML format
+- **AND** ensures consistency across all entries
 
 ### Requirement: Loading Indicator During Codename Generation
 The system SHALL display a loading indicator while generating unique codenames to provide user feedback during AI processing.
@@ -204,4 +242,92 @@ The system SHALL display a loading indicator while generating unique codenames t
 - **THEN** the loading indicator stops immediately
 - **AND** an error message is displayed
 - **AND** the user is informed that codename generation failed
+
+### Requirement: YAML Serialization
+The system SHALL serialize goal metadata to YAML front matter format when creating or updating goals.
+
+#### Scenario: Serialize new goal to YAML
+- **WHEN** a new goal is created
+- **THEN** the system constructs YAML front matter with all metadata fields
+- **AND** uses `js-yaml` to serialize to valid YAML
+- **AND** appends the markdown body after the front matter delimiter
+- **AND** writes the complete entry to the goal file
+
+#### Scenario: Omit null fields in YAML output
+- **WHEN** serializing a goal with null deadline or description
+- **THEN** the YAML front matter omits those fields
+- **AND** only includes non-null metadata
+- **AND** produces cleaner, more readable YAML
+
+#### Scenario: Escape special characters in YAML
+- **WHEN** goal metadata contains special characters (quotes, colons, etc.)
+- **THEN** the YAML serializer properly escapes them
+- **AND** uses quoted strings when necessary
+- **AND** ensures valid YAML syntax
+
+#### Scenario: Multiline description formatting
+- **WHEN** a goal has a multiline description
+- **THEN** the YAML serializer uses the `|` literal block scalar
+- **AND** preserves line breaks in the description
+- **AND** ensures proper indentation
+
+### Requirement: Migration Logging
+The system SHALL log information about format migrations for user awareness and debugging.
+
+#### Scenario: Log successful migration
+- **WHEN** auto-migrating a goal file from inline to YAML format
+- **THEN** the system logs an info message indicating migration occurred
+- **AND** includes the file path in the log
+- **AND** displays during verbose mode or debug logging
+
+#### Scenario: Log migration failures
+- **WHEN** auto-migration fails due to parse errors
+- **THEN** the system logs a warning message
+- **AND** indicates which entries could not be migrated
+- **AND** advises user to check file format manually
+
+#### Scenario: Track migration statistics
+- **WHEN** migrating multiple entries
+- **THEN** the system tracks count of successfully migrated entries
+- **AND** tracks count of failed entries
+- **AND** includes these counts in the log output
+
+### Requirement: Schema Version Validation
+The system SHALL validate schema versions and provide clear feedback for known and unknown versions.
+
+#### Scenario: Validate known schema versions
+- **WHEN** parsing a goal entry
+- **THEN** the system checks if `schema_version` is in the list of known versions
+- **AND** known versions include: "1.0"
+- **AND** known versions are validated before parsing
+
+#### Scenario: Normalize missing schema version
+- **WHEN** a goal entry has no `schema_version` field
+- **THEN** the system normalizes it to "1.0" (default)
+- **AND** proceeds with v1.0 parsing logic
+- **AND** no warning or error is generated (backward compatibility)
+
+#### Scenario: Log warning for unknown versions
+- **WHEN** an unknown schema version is encountered (e.g., "2.0", "1.5")
+- **THEN** the system logs a warning to console
+- **AND** the warning includes the unknown version number
+- **AND** indicates fallback to version "1.0"
+- **AND** the warning format is: `Unknown schema version: <version>, treating as 1.0`
+
+### Requirement: Schema Version Evolution Support
+The system SHALL support future schema version evolution through explicit version tracking.
+
+#### Scenario: Future version compatibility path
+- **WHEN** a new schema version is introduced (hypothetical future)
+- **THEN** the system can detect the version from YAML front matter
+- **AND** route to version-specific parsing logic
+- **AND** maintain backward compatibility with older versions
+- **AND** provide clear migration paths between versions
+
+#### Scenario: Version-specific parsing (future capability)
+- **WHEN** multiple schema versions are supported (hypothetical future)
+- **THEN** the parser reads `schema_version` field
+- **AND** dispatches to version-specific parsing function
+- **AND** each version has its own parsing implementation
+- **AND** unknown versions fall back to latest known version with warning
 

@@ -48,14 +48,49 @@ The system SHALL allow users to log daily activities and events to dated Markdow
 - **AND** each entry can have its own independent goal link
 
 ### Requirement: History File Format
-The system SHALL store history entries in a structured Markdown format with timestamps.
+The system SHALL store history entries in structured Markdown format with YAML front matter including schema version for metadata.
 
-#### Scenario: Format history entry
+**Changes**: Added mandatory `schema_version` field to YAML front matter for format versioning and future evolution.
+
+#### Scenario: YAML front matter includes schema version
 - **WHEN** a history entry is logged
-- **THEN** the entry includes:
-  - A timestamp (HH:MM format)
-  - The entry text
-  - Proper Markdown formatting
+- **THEN** the YAML front matter includes `schema_version: "1.0"` as the first field
+- **AND** the schema version is a string in "MAJOR.MINOR" format
+- **AND** the current schema version is "1.0"
+
+#### Scenario: Example history entry with schema version
+- **WHEN** a history entry is stored
+- **THEN** it follows this format:
+```markdown
+---
+schema_version: "1.0"
+timestamp: "16:45"
+goal: team-alignment
+---
+
+Completed sprint retrospective meeting
+```
+
+#### Scenario: Parse history with schema version
+- **WHEN** reading a history entry with YAML front matter
+- **THEN** the system extracts the `schema_version` field
+- **AND** validates it against known versions ("1.0")
+- **AND** uses the version to determine parsing behavior
+- **AND** constructs a HistoryItemEntry object with all fields populated
+
+#### Scenario: Parse history without schema version (backward compatibility)
+- **WHEN** reading a history entry without `schema_version` field
+- **THEN** the system defaults to schema version "1.0"
+- **AND** parses the entry using v1.0 format
+- **AND** does NOT log any warnings or errors
+- **AND** the entry works identically to versioned entries
+
+#### Scenario: Handle unknown schema version for history
+- **WHEN** reading a history entry with an unknown schema version
+- **THEN** the system logs a warning message indicating the unknown version
+- **AND** falls back to parsing as schema version "1.0"
+- **AND** continues processing without failing
+- **AND** the history entry is still usable
 
 ### Requirement: History Retrieval
 The system SHALL allow users to view their history logs, defaulting to all history entries, with optional date range filtering using natural language or ISO dates.
@@ -100,28 +135,55 @@ The system SHALL allow users to view their history logs, defaulting to all histo
 - **AND** suggests logging history with `aissist history log`
 
 ### Requirement: Link History Entries to Goals
-The system SHALL allow users to link history entries to active goals using keyword matching or interactive selection.
+The system SHALL store goal linkage in YAML front matter instead of inline text.
 
-#### Scenario: Log history with goal keyword
-- **WHEN** the user runs `aissist history log "Completed code review" --goal "review"`
-- **THEN** the system performs keyword matching against active goals
-- **AND** links to the matching goal if exactly one match is found
-- **AND** prompts for selection if multiple or no matches are found
-- **AND** stores the linked goal as metadata in the history entry
+**Changes**: Goal metadata moved from inline `Goal: codename` to YAML `goal: codename` field.
 
-#### Scenario: Log history with goal flag (no keyword)
-- **WHEN** the user runs `aissist history log "Completed code review" --goal`
-- **THEN** the system displays an interactive prompt showing all active goals
-- **AND** allows the user to select a goal or skip linking
-- **AND** stores the linked goal as metadata if a goal is selected
+#### Scenario: Store goal link in YAML
+- **WHEN** logging a history entry with goal linkage
+- **THEN** the system adds `goal: codename` to YAML front matter
+- **AND** does NOT append `Goal: codename` to the text body
+- **AND** the goal is available for filtering and recall
 
-#### Scenario: Partial keyword match
-- **WHEN** the user provides a keyword that partially matches a goal
-- **THEN** the system includes the goal in the match results
-- **AND** performs case-insensitive substring matching
+#### Scenario: Parse goal link from YAML
+- **WHEN** reading a history entry with YAML front matter
+- **THEN** the system extracts the `goal` field from YAML
+- **AND** associates it with the history entry
+- **AND** makes it available for goal-filtered history queries
 
-#### Scenario: Keyword matches goal codename
-- **WHEN** the user provides a keyword that matches a goal's codename
-- **THEN** the system includes the goal in the match results
-- **AND** treats codename matches the same as text matches
+### Requirement: YAML Serialization for History
+The system SHALL serialize history metadata to YAML front matter format when creating or updating history entries.
+
+#### Scenario: Serialize new history entry to YAML
+- **WHEN** a new history entry is logged
+- **THEN** the system constructs YAML front matter with timestamp and optional goal
+- **AND** appends the history text after the front matter delimiter
+- **AND** writes the complete entry to the history file
+
+#### Scenario: Omit null goal in YAML output
+- **WHEN** serializing a history entry without goal linkage
+- **THEN** the YAML front matter omits the `goal` field
+- **AND** only includes timestamp
+- **AND** produces cleaner, more readable YAML
+
+#### Scenario: Multiline history text formatting
+- **WHEN** a history entry contains multiline text
+- **THEN** the markdown body preserves line breaks
+- **AND** YAML front matter is cleanly separated
+- **AND** the entry is properly formatted
+
+### Requirement: Migration Logging for History
+The system SHALL log information about history format migrations for user awareness and debugging.
+
+#### Scenario: Log successful history migration
+- **WHEN** auto-migrating a history file from inline to YAML format
+- **THEN** the system logs an info message indicating migration occurred
+- **AND** includes the file path and count of migrated entries
+- **AND** displays during verbose mode or debug logging
+
+#### Scenario: Log history migration failures
+- **WHEN** auto-migration fails due to parse errors
+- **THEN** the system logs a warning message
+- **AND** indicates which entries could not be migrated
+- **AND** advises user to check file format manually
 

@@ -14,6 +14,7 @@ import {
   updateTodoGoal,
   sortTodosByPriority,
   getAllIncompleteTodos,
+  serializeTodoEntryYaml,
   type TodoEntry,
 } from '../utils/storage.js';
 import { getCurrentDate, getCurrentTime, parseDate, formatDate } from '../utils/date.js';
@@ -62,16 +63,17 @@ todoCommand
         storagePath,
       });
 
-      // Build todo entry with priority and goal metadata
-      let metadata = '';
-      if (priority > 0) {
-        metadata += ` (Priority: ${priority})`;
-      }
-      if (goalLinkResult.codename) {
-        metadata += ` (Goal: ${goalLinkResult.codename})`;
-      }
-      const entry = `## ${time}\n\n- [ ] ${text}${metadata}`;
+      // Build todo entry using YAML format
+      const todoEntry: TodoEntry = {
+        timestamp: time,
+        text,
+        completed: false,
+        priority,
+        goal: goalLinkResult.codename || null,
+        rawEntry: '', // Will be set by serializer
+      };
 
+      const entry = serializeTodoEntryYaml(todoEntry);
       await appendToMarkdown(filePath, entry);
 
       if (priority > 0 && goalLinkResult.codename) {
@@ -198,15 +200,41 @@ todoCommand
   .action(async (indexOrText: string) => {
     try {
       const storagePath = await getStoragePath();
-      const date = getCurrentDate();
-      const filePath = join(storagePath, 'todos', `${date}.md`);
 
       // Parse as number if possible, otherwise treat as text
       const identifier = /^\d+$/.test(indexOrText)
         ? parseInt(indexOrText, 10) - 1 // Convert to 0-based index
         : indexOrText;
 
-      const updatedTodo = await updateTodoStatus(filePath, identifier, true);
+      // If it's a number (index), find from all incomplete todos
+      let updatedTodo: TodoEntry | null = null;
+      let todoFilePath: string;
+
+      if (typeof identifier === 'number') {
+        // Get all incomplete todos to find by index
+        const allTodos = await getAllIncompleteTodos(storagePath);
+        const todo = allTodos[identifier];
+
+        if (!todo || !todo.date) {
+          error('Todo not found');
+          return;
+        }
+
+        todoFilePath = join(storagePath, 'todos', `${todo.date}.md`);
+        updatedTodo = await updateTodoStatus(todoFilePath, todo.text, true);
+      } else {
+        // Search across all files by text
+        const allTodos = await getAllIncompleteTodos(storagePath);
+        const todo = allTodos.find(t => t.text === identifier || t.text.includes(identifier)) || null;
+
+        if (!todo || !todo.date) {
+          error('Todo not found');
+          return;
+        }
+
+        todoFilePath = join(storagePath, 'todos', `${todo.date}.md`);
+        updatedTodo = await updateTodoStatus(todoFilePath, identifier, true);
+      }
 
       if (!updatedTodo) {
         error('Todo not found');
@@ -240,14 +268,40 @@ todoCommand
   .action(async (indexOrText: string) => {
     try {
       const storagePath = await getStoragePath();
-      const date = getCurrentDate();
-      const filePath = join(storagePath, 'todos', `${date}.md`);
 
       const identifier = /^\d+$/.test(indexOrText)
         ? parseInt(indexOrText, 10) - 1
         : indexOrText;
 
-      const removed = await removeTodoEntry(filePath, identifier);
+      // Search across all files to find the todo
+      let removed: TodoEntry | null = null;
+      let todoFilePath: string;
+
+      if (typeof identifier === 'number') {
+        // Get all incomplete todos to find by index
+        const allTodos = await getAllIncompleteTodos(storagePath);
+        const todo = allTodos[identifier];
+
+        if (!todo || !todo.date) {
+          error('Todo not found');
+          return;
+        }
+
+        todoFilePath = join(storagePath, 'todos', `${todo.date}.md`);
+        removed = await removeTodoEntry(todoFilePath, todo.text);
+      } else {
+        // Search across all files by text
+        const allTodos = await getAllIncompleteTodos(storagePath);
+        const todo = allTodos.find(t => t.text === identifier || t.text.includes(identifier)) || null;
+
+        if (!todo || !todo.date) {
+          error('Todo not found');
+          return;
+        }
+
+        todoFilePath = join(storagePath, 'todos', `${todo.date}.md`);
+        removed = await removeTodoEntry(todoFilePath, identifier);
+      }
 
       if (!removed) {
         error('Todo not found');
@@ -271,35 +325,58 @@ todoCommand
   .action(async (indexOrText: string) => {
     try {
       const storagePath = await getStoragePath();
-      const date = getCurrentDate();
-      const filePath = join(storagePath, 'todos', `${date}.md`);
 
-      const content = await readMarkdown(filePath);
-      if (!content) {
-        error('No todos found');
-        return;
-      }
-
-      const entries = parseTodoEntries(content);
       const identifier = /^\d+$/.test(indexOrText)
         ? parseInt(indexOrText, 10) - 1
         : indexOrText;
 
-      let todoIndex: number;
+      // Search across all files to find the todo
+      let currentTodo: TodoEntry | null = null;
+      let todoFilePath: string;
+      let todoIndex: number = -1;
+
       if (typeof identifier === 'number') {
-        todoIndex = identifier;
+        // Get all incomplete todos to find by index
+        const allTodos = await getAllIncompleteTodos(storagePath);
+        currentTodo = allTodos[identifier];
+
+        if (!currentTodo || !currentTodo.date) {
+          error('Todo not found');
+          return;
+        }
+
+        todoFilePath = join(storagePath, 'todos', `${currentTodo.date}.md`);
+
+        // Get the index within that specific file
+        const content = await readMarkdown(todoFilePath);
+        if (content) {
+          const entries = parseTodoEntries(content);
+          todoIndex = entries.findIndex(e => e.text === currentTodo!.text);
+        }
       } else {
-        todoIndex = entries.findIndex(e =>
-          e.text.toLowerCase().includes(identifier.toLowerCase())
-        );
+        // Search across all files by text
+        const allTodos = await getAllIncompleteTodos(storagePath);
+        currentTodo = allTodos.find(t => t.text === identifier || t.text.toLowerCase().includes(identifier.toLowerCase())) || null;
+
+        if (!currentTodo || !currentTodo.date) {
+          error('Todo not found');
+          return;
+        }
+
+        todoFilePath = join(storagePath, 'todos', `${currentTodo.date}.md`);
+
+        // Get the index within that specific file
+        const content = await readMarkdown(todoFilePath);
+        if (content) {
+          const entries = parseTodoEntries(content);
+          todoIndex = entries.findIndex(e => e.text === currentTodo!.text);
+        }
       }
 
-      if (todoIndex === -1 || todoIndex >= entries.length) {
-        error('Todo not found');
+      if (todoIndex === -1) {
+        error('Todo not found in file');
         return;
       }
-
-      const currentTodo = entries[todoIndex];
 
       const newText = await input({
         message: 'Enter new todo text:',
@@ -311,7 +388,7 @@ todoCommand
         return;
       }
 
-      const updated = await updateTodoText(filePath, todoIndex, newText.trim());
+      const updated = await updateTodoText(todoFilePath, todoIndex, newText.trim());
 
       if (updated) {
         success(`Todo updated: "${updated.text}"`);

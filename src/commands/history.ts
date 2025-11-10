@@ -1,7 +1,14 @@
 import { Command } from 'commander';
 import { join } from 'path';
 import { input } from '@inquirer/prompts';
-import { getStoragePath, appendToMarkdown, getAllHistory } from '../utils/storage.js';
+import {
+  getStoragePath,
+  appendToMarkdown,
+  getAllHistory,
+  serializeHistoryItemEntryYaml,
+  parseHistoryItemEntries,
+  type HistoryItemEntry,
+} from '../utils/storage.js';
 import { getCurrentDate as getDate, getCurrentTime, parseDate, formatDate } from '../utils/date.js';
 import { success, error, info } from '../utils/cli.js';
 import { linkToGoal } from '../utils/goal-matcher.js';
@@ -60,18 +67,21 @@ historyCommand
       const time = getCurrentTime();
       const filePath = join(storagePath, 'history', `${date}.md`);
 
-      let entry = `## ${time}\n\n${text}`;
-
       // Handle goal linking if --goal flag is present
       const goalLinkResult = await linkToGoal({
         goalKeyword: options.goal,
         storagePath,
       });
 
-      if (goalLinkResult.codename) {
-        entry += `\n\nGoal: ${goalLinkResult.codename}`;
-      }
+      // Build history entry using YAML format
+      const historyEntry: HistoryItemEntry = {
+        timestamp: time,
+        text,
+        goal: goalLinkResult.codename || null,
+        rawEntry: '', // Will be set by serializer
+      };
 
+      const entry = serializeHistoryItemEntryYaml(historyEntry);
       await appendToMarkdown(filePath, entry);
 
       if (goalLinkResult.codename) {
@@ -137,7 +147,21 @@ historyCommand
       // Display with date separators
       for (const entry of allHistory) {
         console.log(`## ${entry.date}\n`);
-        console.log(entry.content);
+
+        // Parse entries and format them in a human-readable way
+        const historyItems = parseHistoryItemEntries(entry.content);
+
+        for (const item of historyItems) {
+          // Format: timestamp - text [goal: codename]
+          // Replace newlines with spaces for cleaner single-line display
+          const text = item.text.replace(/\n+/g, ' ').trim();
+          let line = `${item.timestamp} - ${text}`;
+          if (item.goal) {
+            line += ` [goal: ${item.goal}]`;
+          }
+          console.log(line);
+        }
+
         console.log('');
       }
     } catch (err) {

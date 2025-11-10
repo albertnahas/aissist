@@ -2,6 +2,11 @@ import { mkdir, access, readFile, writeFile, readdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { z } from 'zod';
+import { parseYamlFrontMatter, serializeYamlFrontMatter, detectFormat, normalizeSchemaVersion, splitEntries } from './yaml-helpers.js';
+import { needsMigration, writeFileAtomic } from './migration.js';
+
+// Re-export migration utilities for other modules
+export { needsMigration, writeFileAtomic };
 
 // Config schema
 export const ConfigSchema = z.object({
@@ -287,14 +292,137 @@ export function parseGoalEntry(entry: string): GoalEntry | null {
 }
 
 /**
+ * Parse a goal entry from YAML front matter format
+ *
+ * YAML format:
+ * ---
+ * timestamp: "14:30"
+ * codename: goal-codename
+ * deadline: "2025-11-15"
+ * description: Description text
+ * ---
+ *
+ * Goal text
+ */
+export function parseGoalEntryYaml(entry: string): GoalEntry | null {
+  const parsed = parseYamlFrontMatter(entry);
+  if (!parsed) return null;
+
+  const [metadata, body] = parsed;
+
+  // Extract and normalize schema version (for future version-specific parsing)
+  normalizeSchemaVersion(metadata.schema_version as string | undefined);
+
+  // Extract required fields
+  const timestamp = metadata.timestamp as string;
+  const codename = (metadata.codename as string) || null;
+  const text = body.trim();
+
+  if (!timestamp || !text) return null;
+
+  // Extract optional fields
+  const deadline = (metadata.deadline as string) || null;
+  const description = (metadata.description as string) || null;
+
+  return {
+    timestamp,
+    codename,
+    text,
+    description,
+    deadline,
+    rawEntry: entry.trim(),
+  };
+}
+
+/**
+ * Serialize a goal entry to YAML front matter format
+ */
+export function serializeGoalEntryYaml(goal: GoalEntry): string {
+  const metadata: Record<string, unknown> = {
+    schema_version: '1.0',
+    timestamp: goal.timestamp,
+  };
+
+  if (goal.codename) {
+    metadata.codename = goal.codename;
+  }
+  if (goal.deadline) {
+    metadata.deadline = goal.deadline;
+  }
+  if (goal.description) {
+    metadata.description = goal.description;
+  }
+
+  return serializeYamlFrontMatter(metadata, goal.text);
+}
+
+/**
+ * Parse a goal entry with automatic format detection
+ * Supports both YAML front matter and inline format
+ */
+export function parseGoalEntryAuto(entry: string): GoalEntry | null {
+  const format = detectFormat(entry);
+
+  if (format === 'yaml') {
+    return parseGoalEntryYaml(entry);
+  } else {
+    return parseGoalEntry(entry);
+  }
+}
+
+/**
  * Parse all goal entries from a markdown file content
+ * Automatically detects and handles both YAML and inline formats
  */
 export function parseGoalEntries(content: string): GoalEntry[] {
   if (!content) return [];
 
-  // Split by ## headers
-  const entries = content.split(/(?=^## )/gm).filter(e => e.trim());
-  return entries.map(parseGoalEntry).filter((e): e is GoalEntry => e !== null);
+  // Detect format and split entries accordingly
+  const format = detectFormat(content);
+
+  if (format === 'yaml') {
+    // YAML format: entries separated by --- delimiters
+    const entries: string[] = [];
+    const lines = content.split('\n');
+    let currentEntry: string[] = [];
+    let inFrontMatter = false;
+    let frontMatterCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (line.trim() === '---') {
+        if (!inFrontMatter && frontMatterCount % 2 === 0) {
+          // Start of a new entry
+          if (currentEntry.length > 0) {
+            entries.push(currentEntry.join('\n').trim());
+            currentEntry = [];
+            frontMatterCount = 0;
+          }
+          inFrontMatter = true;
+          frontMatterCount++;
+          currentEntry.push(line);
+        } else if (inFrontMatter) {
+          // End of front matter
+          inFrontMatter = false;
+          frontMatterCount++;
+          currentEntry.push(line);
+        }
+      } else {
+        currentEntry.push(line);
+      }
+    }
+
+    if (currentEntry.length > 0) {
+      entries.push(currentEntry.join('\n').trim());
+    }
+
+    return entries.map(parseGoalEntryAuto).filter((e): e is GoalEntry => e !== null);
+  } else {
+    // Inline format: entries separated by ## headers
+    const entries = content.split(/(?=^## )/gm).filter(e => e.trim());
+    return entries.map(parseGoalEntryAuto).filter((e): e is GoalEntry => e !== null);
+  }
 }
 
 /**
@@ -484,9 +612,23 @@ async function getGoalsFromPath(storagePath: string): Promise<ActiveGoal[]> {
 
     for (const file of mdFiles) {
       const filePath = join(goalsDir, file);
-      const content = await readMarkdown(filePath);
+      let content = await readMarkdown(filePath);
 
       if (!content) continue;
+
+      // Auto-migrate inline format to YAML if needed
+      if (needsMigration(content)) {
+        try {
+          const inlineEntries = parseGoalEntries(content);
+          const yamlEntries = inlineEntries.map(serializeGoalEntryYaml);
+          const migratedContent = yamlEntries.join('\n\n');
+          await writeFileAtomic(filePath, migratedContent);
+          content = migratedContent;
+        } catch (error) {
+          // If migration fails, continue with original content
+          console.warn(`Failed to migrate ${filePath}:`, error);
+        }
+      }
 
       const entries = parseGoalEntries(content);
       const date = file.replace('.md', '');
@@ -554,11 +696,134 @@ export async function getGoalByCodename(storagePath: string, codename: string): 
 }
 
 /**
- * History entry interface for getAllHistory
+ * History entry interface for getAllHistory (file-level)
  */
 export interface HistoryEntry {
   date: string;
   content: string;
+}
+
+/**
+ * Individual history entry interface (parsed from file content)
+ */
+export interface HistoryItemEntry {
+  timestamp: string;
+  text: string;
+  goal: string | null;
+  rawEntry: string;
+}
+
+/**
+ * Parse a history item entry from inline format
+ *
+ * Inline format:
+ * ## HH:MM
+ *
+ * History text
+ *
+ * Goal: goal-codename
+ */
+export function parseHistoryItemEntry(entry: string): HistoryItemEntry | null {
+  const trimmed = entry.trim();
+  if (!trimmed) return null;
+
+  // Match header: ## HH:MM
+  const headerMatch = trimmed.match(/^##\s+(\d{2}:\d{2})/);
+  if (!headerMatch) return null;
+
+  const timestamp = headerMatch[1];
+
+  // Extract content after header
+  const afterHeader = trimmed.substring(headerMatch[0].length).trim();
+
+  // Extract goal if present (at the end)
+  const goalMatch = afterHeader.match(/\n\nGoal:\s+([a-z0-9-]+)\s*$/);
+  const goal = goalMatch ? goalMatch[1] : null;
+  const text = goalMatch ? afterHeader.substring(0, goalMatch.index).trim() : afterHeader;
+
+  return {
+    timestamp,
+    text,
+    goal,
+    rawEntry: trimmed,
+  };
+}
+
+/**
+ * Parse a history item entry from YAML front matter format
+ *
+ * YAML format:
+ * ---
+ * timestamp: "16:45"
+ * goal: team-alignment
+ * ---
+ *
+ * History text
+ */
+export function parseHistoryItemEntryYaml(entry: string): HistoryItemEntry | null {
+  const parsed = parseYamlFrontMatter(entry);
+  if (!parsed) return null;
+
+  const [metadata, body] = parsed;
+
+  // Extract and normalize schema version (for future version-specific parsing)
+  normalizeSchemaVersion(metadata.schema_version as string | undefined);
+
+  // Extract required fields
+  const timestamp = metadata.timestamp as string;
+  const text = body.trim();
+
+  if (!timestamp || !text) return null;
+
+  // Extract optional fields
+  const goal = (metadata.goal as string) || null;
+
+  return {
+    timestamp,
+    text,
+    goal,
+    rawEntry: entry.trim(),
+  };
+}
+
+/**
+ * Serialize a history item entry to YAML front matter format
+ */
+export function serializeHistoryItemEntryYaml(history: HistoryItemEntry): string {
+  const metadata: Record<string, unknown> = {
+    schema_version: '1.0',
+    timestamp: history.timestamp,
+  };
+
+  if (history.goal) {
+    metadata.goal = history.goal;
+  }
+
+  return serializeYamlFrontMatter(metadata, history.text);
+}
+
+/**
+ * Parse a history item entry with automatic format detection
+ */
+export function parseHistoryItemEntryAuto(entry: string): HistoryItemEntry | null {
+  const format = detectFormat(entry);
+
+  if (format === 'yaml') {
+    return parseHistoryItemEntryYaml(entry);
+  } else {
+    return parseHistoryItemEntry(entry);
+  }
+}
+
+/**
+ * Parse all history item entries from a markdown file content
+ */
+export function parseHistoryItemEntries(content: string): HistoryItemEntry[] {
+  if (!content) return [];
+
+  // Use splitEntries to handle both YAML and inline formats
+  const entries = splitEntries(content);
+  return entries.map(parseHistoryItemEntryAuto).filter((e): e is HistoryItemEntry => e !== null);
 }
 
 /**
@@ -577,9 +842,23 @@ export async function getAllHistory(storagePath: string, sinceDate?: string): Pr
 
     for (const file of mdFiles) {
       const filePath = join(historyDir, file);
-      const content = await readMarkdown(filePath);
+      let content = await readMarkdown(filePath);
 
       if (content) {
+        // Auto-migrate inline format to YAML if needed
+        if (needsMigration(content)) {
+          try {
+            const inlineEntries = parseHistoryItemEntries(content);
+            const yamlEntries = inlineEntries.map(serializeHistoryItemEntryYaml);
+            const migratedContent = yamlEntries.join('\n\n');
+            await writeFileAtomic(filePath, migratedContent);
+            content = migratedContent;
+          } catch (error) {
+            // If migration fails, continue with original content
+            console.warn(`Failed to migrate ${filePath}:`, error);
+          }
+        }
+
         const date = file.replace('.md', '');
 
         // Filter by sinceDate if provided
@@ -615,9 +894,23 @@ export async function getAllIncompleteTodos(storagePath: string): Promise<TodoEn
 
     for (const file of mdFiles) {
       const filePath = join(todosDir, file);
-      const content = await readMarkdown(filePath);
+      let content = await readMarkdown(filePath);
 
       if (content) {
+        // Auto-migrate inline format to YAML if needed
+        if (needsMigration(content)) {
+          try {
+            const inlineEntries = parseTodoEntries(content);
+            const yamlEntries = inlineEntries.map(serializeTodoEntryYaml);
+            const migratedContent = yamlEntries.join('\n\n');
+            await writeFileAtomic(filePath, migratedContent);
+            content = migratedContent;
+          } catch (error) {
+            // If migration fails, continue with original content
+            console.warn(`Failed to migrate ${filePath}:`, error);
+          }
+        }
+
         const date = file.replace('.md', '');
         const entries = parseTodoEntries(content);
 
@@ -701,14 +994,120 @@ function parseTodoEntry(entry: string): TodoEntry | null {
 }
 
 /**
+ * Parse a todo entry from YAML front matter format
+ *
+ * YAML format:
+ * ---
+ * timestamp: "09:15"
+ * completed: false
+ * priority: 3
+ * goal: code-quality
+ * ---
+ *
+ * - [ ] Todo text
+ */
+function parseTodoEntryYaml(entry: string): TodoEntry | null {
+  const parsed = parseYamlFrontMatter(entry);
+  if (!parsed) return null;
+
+  const [metadata, body] = parsed;
+
+  // Extract and normalize schema version (for future version-specific parsing)
+  normalizeSchemaVersion(metadata.schema_version as string | undefined);
+
+  // Extract required fields
+  const timestamp = metadata.timestamp as string;
+  const completed = (metadata.completed as boolean) || false;
+
+  if (!timestamp) return null;
+
+  // Extract checkbox and text from body
+  const checkboxMatch = body.trim().match(/^-\s+\[([ x])\]\s+(.+)$/m);
+  if (!checkboxMatch) return null;
+
+  const text = checkboxMatch[2].trim();
+
+  // Extract optional fields from metadata
+  const priority = (metadata.priority as number) || 0;
+  const goal = (metadata.goal as string) || null;
+
+  return {
+    timestamp,
+    text,
+    completed,
+    goal,
+    priority,
+    rawEntry: entry.trim(),
+  };
+}
+
+/**
+ * Serialize a todo entry to YAML front matter format
+ */
+export function serializeTodoEntryYaml(todo: TodoEntry): string {
+  const metadata: Record<string, unknown> = {
+    schema_version: '1.0',
+    timestamp: todo.timestamp,
+    completed: todo.completed,
+  };
+
+  if (todo.priority > 0) {
+    metadata.priority = todo.priority;
+  }
+  if (todo.goal) {
+    metadata.goal = todo.goal;
+  }
+
+  const checkbox = todo.completed ? '[x]' : '[ ]';
+  const body = `- ${checkbox} ${todo.text}`;
+
+  return serializeYamlFrontMatter(metadata, body);
+}
+
+/**
+ * Parse a todo entry with automatic format detection
+ */
+export function parseTodoEntryAuto(entry: string): TodoEntry | null {
+  const format = detectFormat(entry);
+
+  if (format === 'yaml') {
+    return parseTodoEntryYaml(entry);
+  } else {
+    return parseTodoEntry(entry);
+  }
+}
+
+/**
  * Parse all todo entries from a markdown file content
  */
 export function parseTodoEntries(content: string): TodoEntry[] {
   if (!content) return [];
 
-  // Split by ## headers
-  const entries = content.split(/(?=^## )/gm).filter(e => e.trim());
-  return entries.map(parseTodoEntry).filter((e): e is TodoEntry => e !== null);
+  const format = detectFormat(content);
+
+  if (format === 'yaml') {
+    // YAML format: entries separated by --- delimiters
+    const entries: string[] = [];
+    const parts = content.split(/^---$/gm);
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (!part) continue;
+
+      // If this part starts with YAML keys, it's metadata - combine with next part
+      if (i + 1 < parts.length && part.match(/^\w+:/m)) {
+        const fullEntry = `---\n${part}\n---\n${parts[i + 1]}`;
+        entries.push(fullEntry);
+        i++; // Skip the next part since we've already processed it
+      }
+    }
+
+    return entries.map(parseTodoEntryAuto).filter((e): e is TodoEntry => e !== null);
+  } else {
+    // Inline format: entries separated by ## headers
+    const entries = content.split(/(?=^## )/gm).filter(e => e.trim());
+    return entries.map(parseTodoEntryAuto).filter((e): e is TodoEntry => e !== null);
+  }
 }
 
 /**
@@ -949,4 +1348,142 @@ export async function updateTodoGoal(
   await writeFile(filePath, newContent);
 
   return entries[todoIndex];
+}
+
+/**
+ * Context entry interface (parsed from file content)
+ */
+export interface ContextItemEntry {
+  timestamp: string;
+  source: string;
+  text: string;
+  goal: string | null;
+  rawEntry: string;
+}
+
+/**
+ * Parse a context item entry from inline format
+ *
+ * Inline format:
+ * ## HH:MM
+ *
+ * **Source:** File: meal-plan.txt
+ *
+ * Context text
+ *
+ * Goal: goal-codename
+ */
+export function parseContextItemEntry(entry: string): ContextItemEntry | null {
+  const trimmed = entry.trim();
+  if (!trimmed) return null;
+
+  // Match header: ## HH:MM
+  const headerMatch = trimmed.match(/^##\s+(\d{2}:\d{2})/);
+  if (!headerMatch) return null;
+
+  const timestamp = headerMatch[1];
+
+  // Extract content after header
+  const afterHeader = trimmed.substring(headerMatch[0].length).trim();
+
+  // Extract source if present (at the beginning)
+  const sourceMatch = afterHeader.match(/^\*\*Source:\*\*\s+(.+?)(?:\n\n|$)/);
+  const source = sourceMatch ? sourceMatch[1] : 'Text';
+  const afterSource = sourceMatch
+    ? afterHeader.substring(sourceMatch[0].length).trim()
+    : afterHeader;
+
+  // Extract goal if present (at the end)
+  const goalMatch = afterSource.match(/\n\nGoal:\s+([a-z0-9-]+)\s*$/);
+  const goal = goalMatch ? goalMatch[1] : null;
+  const text = goalMatch ? afterSource.substring(0, goalMatch.index).trim() : afterSource;
+
+  return {
+    timestamp,
+    source,
+    text,
+    goal,
+    rawEntry: trimmed,
+  };
+}
+
+/**
+ * Parse a context item entry from YAML front matter format
+ *
+ * YAML format:
+ * ---
+ * timestamp: "11:20"
+ * source: "File: meal-plan.txt"
+ * goal: healthy-eating
+ * ---
+ *
+ * Context text
+ */
+export function parseContextItemEntryYaml(entry: string): ContextItemEntry | null {
+  const parsed = parseYamlFrontMatter(entry);
+  if (!parsed) return null;
+
+  const [metadata, body] = parsed;
+
+  // Extract and normalize schema version (for future version-specific parsing)
+  normalizeSchemaVersion(metadata.schema_version as string | undefined);
+
+  // Extract required fields
+  const timestamp = metadata.timestamp as string;
+  const source = (metadata.source as string) || 'Text';
+  const text = body.trim();
+
+  if (!timestamp || !text) return null;
+
+  // Extract optional fields
+  const goal = (metadata.goal as string) || null;
+
+  return {
+    timestamp,
+    source,
+    text,
+    goal,
+    rawEntry: entry.trim(),
+  };
+}
+
+/**
+ * Serialize a context item entry to YAML front matter format
+ */
+export function serializeContextItemEntryYaml(context: ContextItemEntry): string {
+  const metadata: Record<string, unknown> = {
+    schema_version: '1.0',
+    timestamp: context.timestamp,
+    source: context.source,
+  };
+
+  if (context.goal) {
+    metadata.goal = context.goal;
+  }
+
+  return serializeYamlFrontMatter(metadata, context.text);
+}
+
+/**
+ * Parse a context item entry with automatic format detection
+ */
+export function parseContextItemEntryAuto(entry: string): ContextItemEntry | null {
+  const format = detectFormat(entry);
+
+  if (format === 'yaml') {
+    return parseContextItemEntryYaml(entry);
+  } else {
+    return parseContextItemEntry(entry);
+  }
+}
+
+/**
+ * Parse all context item entries from a markdown file content
+ */
+export function parseContextItemEntries(content: string): ContextItemEntry[] {
+  if (!content) return [];
+
+  // Split by ## headers
+  const entries = content.split(/(?=^## )/gm).filter(e => e.trim());
+  return entries.map(parseContextItemEntryAuto).filter((e): e is ContextItemEntry => e !== null);
 }
