@@ -1,7 +1,7 @@
 {
   "name": "aissist",
   "description": "AI-powered personal assistant for tracking goals, history, reflections, and context with semantic recall",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "author": {
     "name": "Albert Nahas",
     "email": "albert@nahas.com"
