@@ -127,11 +127,13 @@ Manage your goals with AI-generated codenames, deadlines, and interactive manage
 - **Backward Compatible**: Legacy goals without codenames continue to work
 
 **Subcommands:**
-- `add <text> [--deadline <date>]` - Add a new goal with interactive deadline prompt
+- `add <text> [--deadline <date>] [--parent <codename>]` - Add a new goal with interactive deadline prompt
 - `list [--date <date>] [--plain]` - List goals (interactive mode by default)
+- `show <codename>` - Show goal details including progress notes
 - `complete <codename>` - Mark a goal as completed
 - `remove <codename>` - Remove a goal
 - `deadline <codename> <date>` - Set or update a goal's deadline
+- `progress <codename> <note>` - Add a progress note to a goal
 
 **Interactive Deadline Prompt:**
 When adding a goal, you'll be prompted to set a deadline with natural language support:
@@ -166,6 +168,16 @@ aissist goal complete complete-project-proposal
 aissist goal deadline launch-mvp 2025-12-01
 aissist goal remove launch-mvp
 
+# Link child goal to parent goal (for hierarchical workflows)
+aissist goal add "Implement API endpoint" --parent launch-mvp
+
+# Add progress notes to track incremental work
+aissist goal progress launch-mvp "Completed user flow design"
+aissist goal progress launch-mvp "API endpoints 50% done"
+
+# View goal details including progress notes
+aissist goal show launch-mvp
+
 # Natural language deadline examples
 aissist goal add "Quarterly review"        # Then enter: this quarter
 aissist goal add "Weekly team sync"        # Then enter: next week
@@ -179,6 +191,7 @@ Goals are stored with YAML front matter containing codenames and metadata:
 schema_version: "1.0"
 timestamp: "14:30"
 codename: complete-project-proposal
+parent_goal: launch-mvp
 deadline: "2025-11-15"
 ---
 
@@ -459,6 +472,80 @@ aissist path
 aissist path --hierarchy
 ```
 
+### `aissist sync`
+
+Synchronize progress between parent and child `.aissist` directories. This command enables hierarchical goal tracking across monorepos and nested projects.
+
+**Features:**
+- **Progress File**: Maintains `progress.json` with goal status, progress notes, and timestamps
+- **Child Discovery**: Recursively finds child `.aissist` directories
+- **Parent-Child Linking**: Child goals can reference parent goals via `parent_goal` field
+- **Aggregation**: Parents aggregate progress data from all child instances
+
+**Options:**
+- `-v, --verbose` - Show detailed output including child directories and linked goals
+
+**How it works:**
+1. Updates local `progress.json` with current goal status
+2. Discovers child `.aissist` directories in subdirectories
+3. Aggregates progress from children into parent's `progress.json`
+4. Calculates linked goals (child goals that reference parent goals)
+
+**Examples:**
+```bash
+# Basic sync - update progress.json and aggregate children
+aissist sync
+
+# Verbose output - show all discovered children and linked goals
+aissist sync --verbose
+```
+
+**Progress File Format (`progress.json`):**
+```json
+{
+  "schema_version": "1.0",
+  "instance_path": "/path/to/.aissist",
+  "description": "Project description",
+  "last_updated": "2025-12-07T10:30:00Z",
+  "goals": {
+    "goal-codename": {
+      "text": "Goal description",
+      "status": "active",
+      "deadline": "2025-12-15",
+      "parent_goal": "parent-codename",
+      "completed_at": null,
+      "progress_notes": [
+        { "timestamp": "2025-12-05T14:00:00Z", "text": "Started work" }
+      ]
+    }
+  },
+  "children": {
+    "subproject/.aissist": {
+      "instance_path": "/path/to/subproject/.aissist",
+      "description": "Subproject description",
+      "last_updated": "2025-12-07T09:00:00Z",
+      "goals": { ... }
+    }
+  }
+}
+```
+
+**Configuration:**
+Configure sync behavior in `config.json`:
+```json
+{
+  "sync": {
+    "maxDepth": 5,
+    "exclude": ["custom-ignored-dir"]
+  }
+}
+```
+
+**Use Cases:**
+- **Monorepo workflows**: Track progress across multiple packages
+- **Goal decomposition**: Break parent goals into child goals in subdirectories
+- **Team visibility**: Aggregate progress from team member directories
+
 ### `aissist config hierarchy`
 
 Manage hierarchical configuration for reading from parent directories.
@@ -559,6 +646,7 @@ aissist config hierarchy disable
 .aissist/                    # or ~/.aissist/ for global
 ├── config.json              # Configuration
 ├── DESCRIPTION.md           # Optional instance description (Northstar)
+├── progress.json            # Progress file for parent-child sync
 ├── goals/                   # Goal tracking
 │   ├── YYYY-MM-DD.md        # Active goals with codenames
 │   └── finished/            # Completed goals archive

@@ -51,9 +51,92 @@ export const ConfigSchema = z.object({
       autoBackup: { enabled: false, intervalHours: 24 },
       retention: {},
     }),
+  sync: z
+    .object({
+      maxDepth: z.number().positive().default(5),
+      exclude: z.array(z.string()).default([]),
+    })
+    .default({ maxDepth: 5, exclude: [] }),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+// ============================================================================
+// PROGRESS FILE TYPES AND SCHEMAS
+// ============================================================================
+
+/**
+ * Progress note attached to a goal
+ */
+export interface ProgressNote {
+  timestamp: string; // ISO 8601 format
+  text: string;
+}
+
+/**
+ * Goal progress entry in progress.json
+ */
+export interface GoalProgress {
+  text: string;
+  status: 'active' | 'completed';
+  deadline: string | null;
+  parent_goal: string | null;
+  completed_at: string | null;
+  progress_notes: ProgressNote[];
+}
+
+/**
+ * Child instance progress (aggregated from child directories)
+ */
+export interface ChildProgress {
+  instance_path: string;
+  description: string | null;
+  last_updated: string;
+  goals: Record<string, GoalProgress>;
+}
+
+/**
+ * Progress file format for parent-child sync
+ */
+export interface ProgressFile {
+  schema_version: string;
+  instance_path: string;
+  description: string | null;
+  last_updated: string;
+  goals: Record<string, GoalProgress>;
+  children?: Record<string, ChildProgress>; // Aggregated from child directories
+}
+
+// Zod schema for validation
+export const ProgressNoteSchema = z.object({
+  timestamp: z.string(),
+  text: z.string(),
+});
+
+export const GoalProgressSchema = z.object({
+  text: z.string(),
+  status: z.enum(['active', 'completed']),
+  deadline: z.string().nullable(),
+  parent_goal: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  progress_notes: z.array(ProgressNoteSchema).default([]),
+});
+
+export const ChildProgressSchema = z.object({
+  instance_path: z.string(),
+  description: z.string().nullable(),
+  last_updated: z.string(),
+  goals: z.record(GoalProgressSchema),
+});
+
+export const ProgressFileSchema = z.object({
+  schema_version: z.string(),
+  instance_path: z.string(),
+  description: z.string().nullable(),
+  last_updated: z.string(),
+  goals: z.record(GoalProgressSchema),
+  children: z.record(ChildProgressSchema).optional(),
+});
 
 /**
  * Find .aissist directory by searching up from current directory
@@ -192,6 +275,10 @@ export async function initializeStorage(basePath: string): Promise<void> {
         },
         retention: {},
       },
+      sync: {
+        maxDepth: 5,
+        exclude: [],
+      },
     };
     await saveConfig(basePath, config);
   }
@@ -290,6 +377,7 @@ export interface GoalEntry {
   text: string;
   description: string | null;
   deadline: string | null;
+  parent_goal: string | null;
   rawEntry: string;
 }
 
@@ -348,6 +436,7 @@ export function parseGoalEntry(entry: string): GoalEntry | null {
     text,
     description,
     deadline,
+    parent_goal: null, // Inline format doesn't support parent_goal
     rawEntry: trimmed,
   };
 }
@@ -384,6 +473,7 @@ export function parseGoalEntryYaml(entry: string): GoalEntry | null {
   // Extract optional fields
   const deadline = (metadata.deadline as string) || null;
   const description = (metadata.description as string) || null;
+  const parent_goal = (metadata.parent_goal as string) || null;
 
   return {
     timestamp,
@@ -391,6 +481,7 @@ export function parseGoalEntryYaml(entry: string): GoalEntry | null {
     text,
     description,
     deadline,
+    parent_goal,
     rawEntry: entry.trim(),
   };
 }
@@ -406,6 +497,9 @@ export function serializeGoalEntryYaml(goal: GoalEntry): string {
 
   if (goal.codename) {
     metadata.codename = goal.codename;
+  }
+  if (goal.parent_goal) {
+    metadata.parent_goal = goal.parent_goal;
   }
   if (goal.deadline) {
     metadata.deadline = goal.deadline;
@@ -657,6 +751,7 @@ export interface ActiveGoal {
   timestamp: string;
   deadline: string | null;
   description: string | null;
+  parent_goal: string | null;
   rawEntry: string;
 }
 
@@ -704,6 +799,7 @@ async function getGoalsFromPath(storagePath: string): Promise<ActiveGoal[]> {
             timestamp: entry.timestamp,
             deadline: entry.deadline,
             description: entry.description,
+            parent_goal: entry.parent_goal,
             rawEntry: entry.rawEntry,
           });
         }
@@ -1752,4 +1848,244 @@ export async function shouldAutoBackup(storagePath: string): Promise<boolean> {
     (Date.now() - lastBackup.getTime()) / (1000 * 60 * 60);
 
   return hoursSinceLastBackup >= config.autoBackup.intervalHours;
+}
+
+// ============================================================================
+// PROGRESS FILE OPERATIONS
+// ============================================================================
+
+/**
+ * Default directories to exclude when discovering child .aissist directories
+ */
+const DEFAULT_EXCLUDE_DIRS = ['node_modules', '.git', 'vendor', 'dist', 'build', 'target', '.next', '.cache'];
+
+/**
+ * Read progress file from storage path
+ * Returns null if file doesn't exist or is invalid
+ */
+export async function readProgressFile(storagePath: string): Promise<ProgressFile | null> {
+  const progressPath = join(storagePath, 'progress.json');
+  try {
+    const content = await readFile(progressPath, 'utf-8');
+    const data = JSON.parse(content);
+    return ProgressFileSchema.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write progress file to storage path using atomic write
+ */
+export async function writeProgressFile(storagePath: string, progress: ProgressFile): Promise<void> {
+  const progressPath = join(storagePath, 'progress.json');
+  const content = JSON.stringify(progress, null, 2);
+  await writeFileAtomic(progressPath, content);
+}
+
+/**
+ * Create or update progress file with current goals
+ * Merges new goal data with existing progress notes
+ */
+export async function updateProgressFile(storagePath: string): Promise<void> {
+  const description = await loadDescription(storagePath);
+  const activeGoals = await getActiveGoals(storagePath);
+  const existingProgress = await readProgressFile(storagePath);
+
+  // Build goals record, preserving existing progress notes
+  const goals: Record<string, GoalProgress> = {};
+  for (const goal of activeGoals) {
+    if (!goal.codename) continue;
+
+    // Preserve existing progress notes if available
+    const existingGoal = existingProgress?.goals[goal.codename];
+    goals[goal.codename] = {
+      text: goal.text,
+      status: 'active',
+      deadline: goal.deadline,
+      parent_goal: goal.parent_goal || null,
+      completed_at: null,
+      progress_notes: existingGoal?.progress_notes || [],
+    };
+  }
+
+  const progress: ProgressFile = {
+    schema_version: '1.0',
+    instance_path: storagePath,
+    description,
+    last_updated: new Date().toISOString(),
+    goals,
+    children: existingProgress?.children, // Preserve aggregated children data
+  };
+
+  await writeProgressFile(storagePath, progress);
+}
+
+/**
+ * Mark a goal as completed in progress file
+ */
+export async function markGoalCompleteInProgress(
+  storagePath: string,
+  codename: string
+): Promise<void> {
+  const progress = await readProgressFile(storagePath);
+  if (!progress || !progress.goals[codename]) return;
+
+  progress.goals[codename].status = 'completed';
+  progress.goals[codename].completed_at = new Date().toISOString();
+  progress.last_updated = new Date().toISOString();
+
+  await writeProgressFile(storagePath, progress);
+}
+
+/**
+ * Add a progress note to a goal
+ */
+export async function addProgressNote(
+  storagePath: string,
+  codename: string,
+  noteText: string
+): Promise<boolean> {
+  const progress = await readProgressFile(storagePath);
+  if (!progress) {
+    // Initialize progress file first
+    await updateProgressFile(storagePath);
+    const newProgress = await readProgressFile(storagePath);
+    if (!newProgress || !newProgress.goals[codename]) return false;
+
+    newProgress.goals[codename].progress_notes.push({
+      timestamp: new Date().toISOString(),
+      text: noteText,
+    });
+    newProgress.last_updated = new Date().toISOString();
+    await writeProgressFile(storagePath, newProgress);
+    return true;
+  }
+
+  if (!progress.goals[codename]) return false;
+
+  progress.goals[codename].progress_notes.push({
+    timestamp: new Date().toISOString(),
+    text: noteText,
+  });
+  progress.last_updated = new Date().toISOString();
+
+  await writeProgressFile(storagePath, progress);
+  return true;
+}
+
+/**
+ * Discover child .aissist directories recursively
+ * Respects depth limits and exclusion patterns
+ */
+export async function discoverChildDirectories(
+  startPath: string,
+  options?: { maxDepth?: number; exclude?: string[] }
+): Promise<string[]> {
+  const maxDepth = options?.maxDepth ?? 5;
+  const customExclude = options?.exclude ?? [];
+  const excludeDirs = new Set([...DEFAULT_EXCLUDE_DIRS, ...customExclude]);
+  const discovered: string[] = [];
+
+  async function walkDir(dirPath: string, depth: number): Promise<void> {
+    if (depth > maxDepth) return;
+
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (excludeDirs.has(entry.name)) continue;
+
+        const fullPath = join(dirPath, entry.name);
+
+        // Check if this directory is a .aissist directory
+        if (entry.name === '.aissist') {
+          // Don't include the starting directory's own .aissist
+          if (fullPath !== join(startPath, '.aissist')) {
+            discovered.push(fullPath);
+          }
+          continue; // Don't recurse into .aissist directories
+        }
+
+        // Recurse into subdirectory
+        await walkDir(fullPath, depth + 1);
+      }
+    } catch {
+      // Skip directories we can't read
+    }
+  }
+
+  await walkDir(startPath, 0);
+  return discovered;
+}
+
+/**
+ * Aggregate progress from child directories
+ */
+export async function aggregateChildProgress(storagePath: string): Promise<Record<string, ChildProgress>> {
+  const config = await loadConfig(storagePath).catch(() => ({ sync: { maxDepth: 5, exclude: [] } }));
+  const syncConfig = config.sync ?? { maxDepth: 5, exclude: [] };
+
+  // Get the parent directory of the storage path to find siblings and children
+  const projectPath = dirname(storagePath);
+  const childDirs = await discoverChildDirectories(projectPath, {
+    maxDepth: syncConfig.maxDepth,
+    exclude: syncConfig.exclude,
+  });
+
+  const children: Record<string, ChildProgress> = {};
+
+  for (const childPath of childDirs) {
+    const childProgress = await readProgressFile(childPath);
+    if (!childProgress) continue;
+
+    // Use relative path or directory name as key
+    const relativePath = childPath.replace(projectPath + '/', '');
+    children[relativePath] = {
+      instance_path: childPath,
+      description: childProgress.description,
+      last_updated: childProgress.last_updated,
+      goals: childProgress.goals,
+    };
+  }
+
+  return children;
+}
+
+/**
+ * Sync progress: update local progress and aggregate from children
+ */
+export async function syncProgress(storagePath: string): Promise<{
+  updated: boolean;
+  childCount: number;
+  linkedGoals: number;
+}> {
+  // First, update local progress file
+  await updateProgressFile(storagePath);
+
+  // Then aggregate child progress
+  const children = await aggregateChildProgress(storagePath);
+  const childCount = Object.keys(children).length;
+
+  // Count goals linked to parent goals in this instance
+  let linkedGoals = 0;
+  const localProgress = await readProgressFile(storagePath);
+
+  if (localProgress) {
+    for (const child of Object.values(children)) {
+      for (const goal of Object.values(child.goals)) {
+        if (goal.parent_goal && localProgress.goals[goal.parent_goal]) {
+          linkedGoals++;
+        }
+      }
+    }
+
+    // Update progress file with children data
+    localProgress.children = children;
+    localProgress.last_updated = new Date().toISOString();
+    await writeProgressFile(storagePath, localProgress);
+  }
+
+  return { updated: true, childCount, linkedGoals };
 }

@@ -11,6 +11,11 @@ import {
   updateGoalDescription,
   getActiveGoals,
   serializeGoalEntryYaml,
+  updateProgressFile,
+  markGoalCompleteInProgress,
+  getReadPaths,
+  addProgressNote,
+  readProgressFile,
   type GoalEntry,
   type ActiveGoal,
 } from '../utils/storage.js';
@@ -33,6 +38,7 @@ goalCommand
   .argument('<text>', 'Goal text')
   .option('-d, --deadline <date>', 'Set deadline (YYYY-MM-DD format)')
   .option('-D, --description <text>', 'Add a description to the goal')
+  .option('-p, --parent <codename>', 'Link to a parent goal by codename')
   .action(async (text: string, options) => {
     try {
       const storagePath = await getStoragePath();
@@ -44,6 +50,28 @@ goalCommand
       if (options.deadline && !parseDate(options.deadline)) {
         error(`Invalid date format: ${options.deadline}. Use YYYY-MM-DD format.`);
         return;
+      }
+
+      // Validate parent goal if provided
+      let parentGoal: string | null = null;
+      if (options.parent) {
+        // Check if parent goal exists in ancestor paths
+        const readPaths = await getReadPaths(storagePath);
+        let parentFound = false;
+
+        for (const path of readPaths) {
+          const goalsInPath = await getActiveGoals(path);
+          if (goalsInPath.find(g => g.codename === options.parent)) {
+            parentFound = true;
+            break;
+          }
+        }
+
+        if (!parentFound) {
+          info(`Warning: Parent goal '${options.parent}' not found in hierarchy`);
+          info('The link will still be saved, but may not resolve to a valid goal.');
+        }
+        parentGoal = options.parent;
       }
 
       // Get existing codenames to ensure uniqueness
@@ -89,11 +117,15 @@ goalCommand
         text,
         description: options.description || null,
         deadline: deadlineDate || null,
+        parent_goal: parentGoal,
         rawEntry: '', // Will be set by serializer
       };
 
       const entry = serializeGoalEntryYaml(goalEntry);
       await appendToMarkdown(filePath, entry);
+
+      // Update progress file
+      await updateProgressFile(storagePath);
 
       success(`Goal added with codename: ${chalk.cyan(codename)}`);
       if (options.description) {
@@ -101,6 +133,9 @@ goalCommand
       }
       if (deadlineDate) {
         info(`Deadline: ${deadlineDate}`);
+      }
+      if (parentGoal) {
+        info(`Linked to parent goal: ${chalk.cyan(parentGoal)}`);
       }
 
       // Show contextual hint
@@ -261,6 +296,8 @@ goalCommand
       const completed = await completeGoalEntry(sourcePath, destPath, codename);
 
       if (completed) {
+        // Update progress file to mark goal as completed
+        await markGoalCompleteInProgress(storagePath, codename);
         // Play completion animation for goal achievement
         await playCompletionAnimation(`Goal '${codename}' completed!`);
         // Show contextual hint
@@ -301,12 +338,103 @@ goalCommand
       const updated = await updateGoalDeadline(filePath, codename, deadlineDate);
 
       if (updated) {
+        // Update progress file
+        await updateProgressFile(storagePath);
         success(`Deadline set for '${codename}': ${deadlineDate}`);
       } else {
         error(`Goal '${codename}' not found`);
       }
     } catch (err) {
       error(`Failed to set deadline: ${(err as Error).message}`);
+      throw err;
+    }
+  });
+
+goalCommand
+  .command('progress')
+  .description('Add a progress note to a goal')
+  .argument('<codename>', 'Goal codename')
+  .argument('<note>', 'Progress note text')
+  .action(async (codename: string, note: string) => {
+    try {
+      const storagePath = await getStoragePath();
+
+      // Verify goal exists
+      const allGoals = await getActiveGoals(storagePath);
+      const goal = allGoals.find(g => g.codename === codename);
+
+      if (!goal) {
+        error(`Goal '${codename}' not found`);
+        return;
+      }
+
+      // Add progress note
+      const added = await addProgressNote(storagePath, codename, note);
+
+      if (added) {
+        success(`Progress note added to '${codename}'`);
+      } else {
+        error(`Failed to add progress note`);
+      }
+    } catch (err) {
+      error(`Failed to add progress note: ${(err as Error).message}`);
+      throw err;
+    }
+  });
+
+goalCommand
+  .command('show')
+  .description('Show details of a specific goal including progress notes')
+  .argument('<codename>', 'Goal codename')
+  .action(async (codename: string) => {
+    try {
+      const storagePath = await getStoragePath();
+
+      // Find the goal
+      const allGoals = await getActiveGoals(storagePath);
+      const goal = allGoals.find(g => g.codename === codename);
+
+      if (!goal) {
+        error(`Goal '${codename}' not found`);
+        return;
+      }
+
+      // Display goal details
+      console.log(chalk.bold(`\nGoal: ${chalk.cyan(goal.codename)}\n`));
+      console.log(`  ${goal.text}`);
+      if (goal.description) {
+        console.log(chalk.gray(`\n  Description: ${goal.description}`));
+      }
+      if (goal.deadline) {
+        const deadlineColor = isOverdue(goal.deadline) ? chalk.red : chalk.yellow;
+        console.log(`  Deadline: ${deadlineColor(goal.deadline)}`);
+      }
+      if (goal.parent_goal) {
+        console.log(`  Parent goal: ${chalk.cyan(goal.parent_goal)}`);
+      }
+      console.log(chalk.gray(`  Created: ${goal.date} ${goal.timestamp}`));
+
+      // Show progress notes from progress.json
+      const progress = await readProgressFile(storagePath);
+      const goalProgress = progress?.goals[codename];
+
+      if (goalProgress?.progress_notes && goalProgress.progress_notes.length > 0) {
+        console.log(chalk.bold(`\n  Progress Notes:`));
+        // Sort by timestamp, newest first
+        const sortedNotes = [...goalProgress.progress_notes].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        for (const note of sortedNotes) {
+          const date = new Date(note.timestamp);
+          const dateStr = date.toLocaleDateString();
+          const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          console.log(chalk.gray(`    [${dateStr} ${timeStr}]`) + ` ${note.text}`);
+        }
+      }
+
+      console.log('');
+    } catch (err) {
+      error(`Failed to show goal: ${(err as Error).message}`);
       throw err;
     }
   });
@@ -331,6 +459,10 @@ async function interactiveGoalListWithDates(
         : chalk.yellow(` [Due: ${goal.deadline}]`)
       : '';
 
+    const parentDisplay = goal.parent_goal
+      ? chalk.gray(` (child of: ${goal.parent_goal})`)
+      : '';
+
     const truncatedText = goal.text.length > 60
       ? goal.text.substring(0, 60) + '...'
       : goal.text;
@@ -343,9 +475,12 @@ async function interactiveGoalListWithDates(
         : goal.description;
       displayDescription = `${goal.text}\n${chalk.gray('Description: ' + truncatedDescription)}`;
     }
+    if (goal.parent_goal) {
+      displayDescription += `\n${chalk.gray('Parent: ' + goal.parent_goal)}`;
+    }
 
     return {
-      name: `${goal.timestamp} | ${codenameDisplay} | ${truncatedText}${deadlineDisplay}`,
+      name: `${goal.timestamp} | ${codenameDisplay} | ${truncatedText}${deadlineDisplay}${parentDisplay}`,
       value: index,
       description: displayDescription,
     };

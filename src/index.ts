@@ -24,6 +24,7 @@ import { clearCommand } from './commands/clear.js';
 import { configCommand } from './commands/config.js';
 import { backupCommand } from './commands/backup.js';
 import { restoreCommand } from './commands/restore.js';
+import { syncCommand } from './commands/sync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -103,6 +104,7 @@ program.addCommand(clearCommand);
 program.addCommand(configCommand);
 program.addCommand(backupCommand);
 program.addCommand(restoreCommand);
+program.addCommand(syncCommand);
 
 program
   .command('recall')

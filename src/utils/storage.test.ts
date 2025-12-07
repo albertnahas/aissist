@@ -15,8 +15,14 @@ import {
   readMarkdown,
   getActiveGoals,
   getGoalByCodename,
+  readProgressFile,
+  writeProgressFile,
+  updateProgressFile,
+  addProgressNote,
+  discoverChildDirectories,
   ConfigSchema,
   type Config,
+  type ProgressFile,
 } from './storage';
 
 describe('storage utilities', () => {
@@ -458,6 +464,252 @@ Simple goal text`;
       expect(result?.text).toBe('Simple goal text');
       expect(result?.description).toBeNull();
       expect(result?.deadline).toBeNull();
+    });
+  });
+
+  describe('Progress File Operations', () => {
+    describe('readProgressFile and writeProgressFile', () => {
+      it('should return null if progress.json does not exist', async () => {
+        const result = await readProgressFile(testDir);
+        expect(result).toBeNull();
+      });
+
+      it('should write and read progress file correctly', async () => {
+        const progress: ProgressFile = {
+          schema_version: '1.0',
+          instance_path: testDir,
+          description: 'Test instance',
+          last_updated: new Date().toISOString(),
+          goals: {
+            'test-goal': {
+              text: 'Test goal text',
+              status: 'active',
+              deadline: '2025-12-31',
+              parent_goal: null,
+              completed_at: null,
+              progress_notes: [],
+            },
+          },
+        };
+
+        await writeProgressFile(testDir, progress);
+        const result = await readProgressFile(testDir);
+
+        expect(result).not.toBeNull();
+        expect(result?.schema_version).toBe('1.0');
+        expect(result?.description).toBe('Test instance');
+        expect(result?.goals['test-goal'].text).toBe('Test goal text');
+        expect(result?.goals['test-goal'].status).toBe('active');
+      });
+
+      it('should return null for invalid progress.json', async () => {
+        await writeFile(join(testDir, 'progress.json'), 'invalid json');
+        const result = await readProgressFile(testDir);
+        expect(result).toBeNull();
+      });
+    });
+
+    describe('updateProgressFile', () => {
+      it('should create progress.json from active goals', async () => {
+        // Setup: Create a goal file
+        const goalsDir = join(testDir, 'goals');
+        await mkdir(goalsDir, { recursive: true });
+
+        const goalContent = `---
+schema_version: "1.0"
+timestamp: "10:00"
+codename: test-goal
+deadline: "2025-12-31"
+---
+
+Complete the test task`;
+
+        await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+        await updateProgressFile(testDir);
+
+        const progress = await readProgressFile(testDir);
+        expect(progress).not.toBeNull();
+        expect(progress?.goals['test-goal']).toBeDefined();
+        expect(progress?.goals['test-goal'].text).toBe('Complete the test task');
+        expect(progress?.goals['test-goal'].status).toBe('active');
+      });
+
+      it('should preserve existing progress notes when updating', async () => {
+        // Setup: Create existing progress with notes
+        const existingProgress: ProgressFile = {
+          schema_version: '1.0',
+          instance_path: testDir,
+          description: null,
+          last_updated: '2025-01-01T00:00:00.000Z',
+          goals: {
+            'test-goal': {
+              text: 'Old text',
+              status: 'active',
+              deadline: null,
+              parent_goal: null,
+              completed_at: null,
+              progress_notes: [
+                { timestamp: '2025-01-01T10:00:00.000Z', text: 'Note 1' },
+              ],
+            },
+          },
+        };
+        await writeProgressFile(testDir, existingProgress);
+
+        // Create goals directory with updated goal
+        const goalsDir = join(testDir, 'goals');
+        await mkdir(goalsDir, { recursive: true });
+
+        const goalContent = `---
+schema_version: "1.0"
+timestamp: "10:00"
+codename: test-goal
+---
+
+Updated goal text`;
+
+        await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+        await updateProgressFile(testDir);
+
+        const progress = await readProgressFile(testDir);
+        expect(progress?.goals['test-goal'].text).toBe('Updated goal text');
+        expect(progress?.goals['test-goal'].progress_notes).toHaveLength(1);
+        expect(progress?.goals['test-goal'].progress_notes[0].text).toBe('Note 1');
+      });
+    });
+
+    describe('addProgressNote', () => {
+      it('should add progress note to existing goal', async () => {
+        // Setup: Create goal and progress file
+        const goalsDir = join(testDir, 'goals');
+        await mkdir(goalsDir, { recursive: true });
+
+        const goalContent = `---
+schema_version: "1.0"
+timestamp: "10:00"
+codename: test-goal
+---
+
+Test goal`;
+
+        await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+        await updateProgressFile(testDir);
+
+        const added = await addProgressNote(testDir, 'test-goal', 'Made progress');
+
+        expect(added).toBe(true);
+
+        const progress = await readProgressFile(testDir);
+        expect(progress?.goals['test-goal'].progress_notes).toHaveLength(1);
+        expect(progress?.goals['test-goal'].progress_notes[0].text).toBe('Made progress');
+      });
+
+      it('should return false for non-existent goal', async () => {
+        const added = await addProgressNote(testDir, 'nonexistent-goal', 'Note');
+        expect(added).toBe(false);
+      });
+    });
+
+    describe('discoverChildDirectories', () => {
+      it('should discover child .aissist directories', async () => {
+        // Setup: Create nested .aissist directories
+        const parentAissist = join(testDir, '.aissist');
+        const childDir = join(testDir, 'subproject');
+        const childAissist = join(childDir, '.aissist');
+
+        await mkdir(parentAissist, { recursive: true });
+        await mkdir(childAissist, { recursive: true });
+
+        const result = await discoverChildDirectories(testDir);
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toBe(childAissist);
+      });
+
+      it('should exclude node_modules by default', async () => {
+        // Setup: Create .aissist in node_modules
+        const nodeModulesAissist = join(testDir, 'node_modules', 'some-package', '.aissist');
+        await mkdir(nodeModulesAissist, { recursive: true });
+
+        const result = await discoverChildDirectories(testDir);
+        expect(result).toHaveLength(0);
+      });
+
+      it('should respect maxDepth option', async () => {
+        // Setup: Create deeply nested .aissist
+        const deepAissist = join(testDir, 'a', 'b', 'c', 'd', '.aissist');
+        await mkdir(deepAissist, { recursive: true });
+
+        const result = await discoverChildDirectories(testDir, { maxDepth: 2 });
+        expect(result).toHaveLength(0);
+      });
+
+      it('should respect custom exclude option', async () => {
+        // Setup: Create .aissist in custom-excluded directory
+        const customExcluded = join(testDir, 'excluded-dir', '.aissist');
+        await mkdir(customExcluded, { recursive: true });
+
+        const result = await discoverChildDirectories(testDir, { exclude: ['excluded-dir'] });
+        expect(result).toHaveLength(0);
+      });
+
+      it('should find multiple child directories', async () => {
+        // Setup: Create multiple child .aissist directories
+        const child1 = join(testDir, 'api', '.aissist');
+        const child2 = join(testDir, 'web', '.aissist');
+        await mkdir(child1, { recursive: true });
+        await mkdir(child2, { recursive: true });
+
+        const result = await discoverChildDirectories(testDir);
+
+        expect(result).toHaveLength(2);
+        expect(result).toContain(child1);
+        expect(result).toContain(child2);
+      });
+    });
+
+    describe('Goal with parent_goal field', () => {
+      it('should parse goal with parent_goal from YAML', async () => {
+        const goalsDir = join(testDir, 'goals');
+        await mkdir(goalsDir, { recursive: true });
+
+        const goalContent = `---
+schema_version: "1.0"
+timestamp: "10:00"
+codename: child-goal
+parent_goal: parent-goal
+---
+
+Child goal text`;
+
+        await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+        const goals = await getActiveGoals(testDir);
+        expect(goals).toHaveLength(1);
+        expect(goals[0].codename).toBe('child-goal');
+        expect(goals[0].parent_goal).toBe('parent-goal');
+      });
+
+      it('should handle goal without parent_goal', async () => {
+        const goalsDir = join(testDir, 'goals');
+        await mkdir(goalsDir, { recursive: true });
+
+        const goalContent = `---
+schema_version: "1.0"
+timestamp: "10:00"
+codename: standalone-goal
+---
+
+Standalone goal text`;
+
+        await writeFile(join(goalsDir, '2025-11-04.md'), goalContent);
+
+        const goals = await getActiveGoals(testDir);
+        expect(goals).toHaveLength(1);
+        expect(goals[0].parent_goal).toBeNull();
+      });
     });
   });
 });
