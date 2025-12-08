@@ -7,6 +7,7 @@ import {
   getAllHistory,
   serializeHistoryItemEntryYaml,
   parseHistoryItemEntries,
+  getActiveGoals,
   type HistoryItemEntry,
 } from '../utils/storage.js';
 import { getCurrentDate as getDate, getCurrentTime, parseDate, formatDate } from '../utils/date.js';
@@ -22,17 +23,19 @@ import {
   formatActivityForHistory,
 } from '../utils/github.js';
 import ora from 'ora';
+import { enhanceHistoryEntry } from '../llm/claude.js';
 
 const historyCommand = new Command('history');
 
 historyCommand
   .command('log')
-  .description('Log a history entry (use --goal to link to a goal, --from to import from GitHub, --date for retroactive logging)')
+  .description('Log a history entry (use --goal to link to a goal, --from to import from GitHub, --date for retroactive logging, --smart for AI enhancement)')
   .argument('[text]', 'History entry text (omit when using --from)')
   .option('-g, --goal [keyword]', 'Link this history entry to a goal (optional keyword for matching)')
   .option('-f, --from <timeframe>', 'Import GitHub activity from timeframe (e.g., "this week", "today")')
   .option('-d, --date <date>', 'Date for the entry (YYYY-MM-DD or natural language like "yesterday")')
-  .action(async (text: string | undefined, options: { goal?: string | boolean; from?: string; date?: string }) => {
+  .option('-s, --smart', 'Use AI to clean up text and auto-link to goals')
+  .action(async (text: string | undefined, options: { goal?: string | boolean; from?: string; date?: string; smart?: boolean }) => {
     // Handle GitHub import
     if (options.from) {
       await importFromGitHub(options.from);
@@ -67,30 +70,58 @@ historyCommand
       const time = getCurrentTime();
       const filePath = join(storagePath, 'history', `${date}.md`);
 
-      // Handle goal linking if --goal flag is present
-      const goalLinkResult = await linkToGoal({
-        goalKeyword: options.goal,
-        storagePath,
-      });
+      let finalText = text;
+      let goalCodename: string | null = null;
+
+      // Handle --smart flag: AI enhancement with auto goal-linking
+      if (options.smart) {
+        const spinner = ora('Enhancing with AI...').start();
+
+        // Get active goals for potential linking (unless explicit --goal provided)
+        const activeGoals = options.goal ? [] : await getActiveGoals(storagePath);
+        const goalsForMatching = activeGoals.map(g => ({ codename: g.codename, text: g.text }));
+
+        const result = await enhanceHistoryEntry(text, goalsForMatching);
+
+        if (result.wasEnhanced) {
+          spinner.succeed('Text enhanced');
+          finalText = result.enhancedText;
+          // Only use AI goal if --goal wasn't explicitly provided
+          if (!options.goal && result.goalCodename) {
+            goalCodename = result.goalCodename;
+          }
+        } else {
+          spinner.warn(result.warning || 'Enhancement skipped');
+        }
+      }
+
+      // Handle explicit --goal flag (takes precedence over smart auto-linking)
+      if (options.goal) {
+        const goalLinkResult = await linkToGoal({
+          goalKeyword: options.goal,
+          storagePath,
+        });
+        goalCodename = goalLinkResult.codename;
+        if (options.goal && goalLinkResult.message !== 'No goal linking requested' && !goalLinkResult.codename) {
+          info(goalLinkResult.message);
+        }
+      }
 
       // Build history entry using YAML format
       const historyEntry: HistoryItemEntry = {
         timestamp: time,
-        text,
-        goal: goalLinkResult.codename || null,
+        text: finalText,
+        goal: goalCodename,
         rawEntry: '', // Will be set by serializer
       };
 
       const entry = serializeHistoryItemEntryYaml(historyEntry);
       await appendToMarkdown(filePath, entry);
 
-      if (goalLinkResult.codename) {
-        success(`History logged and linked to goal: ${goalLinkResult.codename}`);
+      if (goalCodename) {
+        success(`History logged and linked to goal: ${goalCodename}`);
       } else {
-        if (options.goal && goalLinkResult.message !== 'No goal linking requested') {
-          info(goalLinkResult.message);
-        }
-        success(`History logged: "${text}"`);
+        success(`History logged: "${finalText}"`);
       }
     } catch (err) {
       error(`Failed to log history: ${(err as Error).message}`);

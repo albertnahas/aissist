@@ -141,4 +141,104 @@ describe('History Logging E2E', () => {
     const historyFiles = harness.listFiles('history');
     expect(historyFiles.length).toBe(1); // All entries should be in one file for today
   });
+
+  describe('--smart flag', () => {
+    it('should enhance text with AI when --smart is used', async () => {
+      const result = await harness.run([
+        'history',
+        'log',
+        '--smart',
+        'fixd the login bug',
+      ]);
+
+      harness.expectSuccess(result);
+      expect(result.stdout).toContain('History logged');
+
+      // Verify the enhanced text was stored
+      const historyFiles = harness.listFiles('history');
+      expect(historyFiles.length).toBeGreaterThan(0);
+
+      const content = harness.readFile(`history/${historyFiles[0]}`);
+      // The mock should have corrected "fixd" to "Fixed"
+      expect(content).toContain('Fixed');
+      // The original typo should not be there
+      expect(content).not.toContain('fixd');
+    });
+
+    it('should use short flag -s', async () => {
+      const result = await harness.run([
+        'history',
+        'log',
+        '-s',
+        'implmented new featur for usr',
+      ]);
+
+      harness.expectSuccess(result);
+      expect(result.stdout).toContain('History logged');
+
+      // Verify the enhanced text
+      const historyFiles = harness.listFiles('history');
+      const content = harness.readFile(`history/${historyFiles[0]}`);
+      // Mock should correct typos
+      expect(content).toContain('Implemented');
+      expect(content).toContain('feature');
+      expect(content).toContain('user');
+      // Original typos should not be there
+      expect(content).not.toContain('implmented');
+      expect(content).not.toContain('usr');
+    });
+
+    it('should work with --date flag', async () => {
+      const result = await harness.run([
+        'history',
+        'log',
+        '--smart',
+        '--date',
+        '2025-01-15',
+        'fixd the bug',
+      ]);
+
+      harness.expectSuccess(result);
+      expect(result.stdout).toContain('History logged');
+
+      // Verify the file was created with the correct date
+      const historyFiles = harness.listFiles('history');
+      const hasDateFile = historyFiles.some(f => f.includes('2025-01-15'));
+      expect(hasDateFile).toBe(true);
+
+      // Verify the text was enhanced
+      const content = harness.readFile('history/2025-01-15.md');
+      expect(content).toContain('Fixed');
+    });
+
+    it('should use explicit --goal over smart auto-linking', async () => {
+      // First create a goal
+      const goalResult = await harness.run([
+        'goal',
+        'add',
+        'Manual goal',
+        '--deadline',
+        '2025-12-31',
+      ]);
+      harness.expectSuccess(goalResult);
+
+      const codenameMatch = goalResult.stdout.match(/Goal added with codename: ([a-z0-9-]+)/i);
+      expect(codenameMatch).toBeTruthy();
+      const codename = codenameMatch![1];
+
+      // Log with both --smart and explicit --goal
+      const result = await harness.run([
+        'history',
+        'log',
+        '--smart',
+        '--goal',
+        codename,
+        'did some work',
+      ]);
+
+      harness.expectSuccess(result);
+      expect(result.stdout).toContain('linked to goal');
+      expect(result.stdout).toContain(codename);
+    });
+  });
 });

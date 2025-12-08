@@ -94,6 +94,49 @@ These items will help maintain momentum and ensure alignment with your broader o
     return 'test-goal';
   }
 
+  // Handle smart history enhancement
+  if (lowerPrompt.includes('minimal text editor') || lowerPrompt.includes('personal history log')) {
+    const inputMatch = prompt.match(/Input text: "(.+?)"/);
+    const inputText = inputMatch ? inputMatch[1] : 'Enhanced text';
+
+    // Simple text cleanup simulation
+    let enhancedText = inputText
+      .replace(/fixd/gi, 'Fixed')
+      .replace(/implmented/gi, 'Implemented')
+      .replace(/featur/gi, 'feature')
+      .replace(/usr/gi, 'user')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Capitalize first letter
+    enhancedText = enhancedText.charAt(0).toUpperCase() + enhancedText.slice(1);
+
+    // Check for goal matching
+    let goalCodename: string | null = null;
+    const goalsMatch = prompt.match(/Active Goals.*?:\n([\s\S]*?)(?=\n\nInstructions|$)/);
+    if (goalsMatch) {
+      const goalsText = goalsMatch[1];
+      // Simple keyword matching for testing
+      if (lowerPrompt.includes('performance') || lowerPrompt.includes('optim')) {
+        const perfGoalMatch = goalsText.match(/- ([a-z0-9-]+):/i);
+        if (perfGoalMatch && goalsText.toLowerCase().includes('performance')) {
+          goalCodename = perfGoalMatch[1];
+        }
+      }
+      if (lowerPrompt.includes('auth') || lowerPrompt.includes('login')) {
+        const authGoalMatch = goalsText.match(/- ([a-z0-9-]+):.*?auth/i);
+        if (authGoalMatch) {
+          goalCodename = authGoalMatch[1];
+        }
+      }
+    }
+
+    return JSON.stringify({
+      text: enhancedText,
+      goal: goalCodename
+    });
+  }
+
   // Default response for unknown prompts
   return `I've processed your request. This is a mock response for testing purposes.`;
 }

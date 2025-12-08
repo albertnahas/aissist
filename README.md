@@ -214,16 +214,31 @@ Complete project proposal
 
 ### `aissist history`
 
-Track daily activities and events with support for retroactive logging.
+Track daily activities and events with support for retroactive logging and AI-enhanced input.
 
 **Subcommands:**
-- `log <text> [--date <date>]` - Log a history entry (supports retroactive dates)
+- `log <text> [--date <date>] [--smart] [--goal [keyword]]` - Log a history entry
 - `show [--date <date>]` - Show all history entries (or specific date)
+
+**Smart Logging:**
+Use the `--smart` (or `-s`) flag to clean up rough input with AI:
+- Corrects spelling and grammar mistakes
+- Minimal rephrasing for clarity (preserves meaning)
+- Auto-links to relevant goals when confident match exists
+- Falls back to original text if Claude CLI unavailable
 
 **Examples:**
 ```bash
 # Log to today (default)
 aissist history log "Fixed bug in authentication flow"
+
+# Smart logging - AI cleans up text and auto-links to goals
+aissist history log --smart "fixd the auth bug, took 2hrs"
+# → Logs: "Fixed authentication bug (2 hours)" linked to matching goal
+
+# Short flag for smart logging
+aissist history log -s "implmented new featur for usr profiles"
+# → Logs: "Implemented new feature for user profiles"
 
 # Log to a past date (ISO format)
 aissist history log "Completed design review" --date 2025-11-05
@@ -231,6 +246,9 @@ aissist history log "Completed design review" --date 2025-11-05
 # Log to a past date (natural language)
 aissist history log "Team standup" --date yesterday
 aissist history log "Sprint planning" --date "last Monday"
+
+# Combine smart with date flag
+aissist history log --smart --date yesterday "workd on API refactor"
 
 # Show all history entries
 aissist history show

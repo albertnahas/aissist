@@ -367,6 +367,114 @@ Respond with ONLY the codename, nothing else.`;
 }
 
 /**
+ * Result from enhancing a history entry with AI
+ */
+export interface EnhancedHistoryResult {
+  enhancedText: string;
+  goalCodename: string | null;
+  wasEnhanced: boolean;
+  warning?: string;
+}
+
+/**
+ * Goal info needed for smart matching
+ */
+export interface GoalInfo {
+  codename: string;
+  text: string;
+}
+
+/**
+ * Enhance a history entry using Claude Haiku
+ * - Corrects spelling/grammar mistakes
+ * - Minimal rephrasing for clarity
+ * - Auto-links to most relevant goal if confident match exists
+ */
+export async function enhanceHistoryEntry(
+  rawText: string,
+  activeGoals: GoalInfo[]
+): Promise<EnhancedHistoryResult> {
+  // Check if Claude CLI is available
+  const isAvailable = await checkClaudeCliAvailable();
+  if (!isAvailable) {
+    return {
+      enhancedText: rawText,
+      goalCodename: null,
+      wasEnhanced: false,
+      warning: 'Claude CLI not available. Logging original text.',
+    };
+  }
+
+  const goalsContext = activeGoals.length > 0
+    ? `\n\nActive Goals (for potential linking):\n${activeGoals.map(g => `- ${g.codename}: ${g.text}`).join('\n')}`
+    : '';
+
+  const prompt = `You are a minimal text editor for a personal history log. Your job is to clean up rough input while preserving the original meaning.
+
+Input text: "${rawText}"${goalsContext}
+
+Instructions:
+1. Fix any spelling or grammar mistakes
+2. Make minimal improvements for clarity (don't over-elaborate)
+3. Preserve all numbers, metrics, and specific details exactly
+4. Keep the text concise - similar length to input
+5. If the input is already clean, return it largely unchanged
+${activeGoals.length > 0 ? `6. If the work clearly relates to one of the active goals, include its codename. Only link if confident.` : ''}
+
+Respond in this exact JSON format (no markdown):
+{
+  "text": "the enhanced text here",
+  "goal": ${activeGoals.length > 0 ? '"codename-here" or null if no confident match' : 'null'}
+}`;
+
+  try {
+    const response = await executeClaudeCommand(prompt, 15000, 'haiku');
+
+    // Parse JSON response
+    const cleaned = response.trim();
+    // Handle potential markdown code blocks
+    const jsonStr = cleaned.replace(/^```json?\n?|\n?```$/g, '').trim();
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+
+      // Validate goal codename if returned
+      let goalCodename: string | null = null;
+      if (parsed.goal && typeof parsed.goal === 'string') {
+        // Verify the goal exists in our list
+        const matchedGoal = activeGoals.find(g => g.codename === parsed.goal);
+        if (matchedGoal) {
+          goalCodename = parsed.goal;
+        }
+      }
+
+      return {
+        enhancedText: parsed.text || rawText,
+        goalCodename,
+        wasEnhanced: true,
+      };
+    } catch {
+      // If JSON parsing fails, try to extract text from response
+      // This handles cases where the model doesn't follow the exact format
+      return {
+        enhancedText: rawText,
+        goalCodename: null,
+        wasEnhanced: false,
+        warning: 'Failed to parse AI response. Logging original text.',
+      };
+    }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    return {
+      enhancedText: rawText,
+      goalCodename: null,
+      wasEnhanced: false,
+      warning: `Smart enhancement failed: ${errorMessage}. Logging original text.`,
+    };
+  }
+}
+
+/**
  * Fallback codename generation (deterministic, no AI)
  */
 function generateFallbackCodename(goalText: string, existingCodenames: string[]): string {
